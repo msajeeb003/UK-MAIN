@@ -1,0 +1,88 @@
+name: E2E
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # Deterministic headless suite: an ephemeral backend with the offline stub
+  # extractor (no API keys, no network). Runs on Chrome + Edge (the brokers'
+  # Google-Slides browsers) and WebKit (for the vanilla-JS frontend).
+  e2e:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { project: chromium, browser: chromium }
+          - { project: edge, browser: msedge }
+          - { project: webkit, browser: webkit }
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install backend (runtime deps only — the stub needs no OCR/LLM)
+        run: pip install -r backend/requirements.txt
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install E2E deps
+        working-directory: e2e
+        run: npm ci
+      - name: Install ${{ matrix.browser }}
+        working-directory: e2e
+        run: npx playwright install --with-deps ${{ matrix.browser }}
+
+      - name: Run E2E (${{ matrix.project }})
+        working-directory: e2e
+        env:
+          PYTHON: python3
+        run: npx playwright test --project=${{ matrix.project }}
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: playwright-report-${{ matrix.project }}
+          path: e2e/playwright-report/
+          retention-days: 7
+
+  # Optional smoke run against a deployed staging target. Enabled by setting
+  # the repository variable E2E_STAGING_URL (and, if the seeded broker differs,
+  # the E2E_ADMIN_EMAIL / E2E_ADMIN_PASSWORD secrets). Extraction is real
+  # there, so only the structure/gate assertions are relied on — never exact
+  # extracted values. Skipped entirely when the variable is unset.
+  e2e-staging:
+    runs-on: ubuntu-latest
+    if: ${{ vars.E2E_STAGING_URL != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install E2E deps
+        working-directory: e2e
+        run: npm ci
+      - name: Install browsers
+        working-directory: e2e
+        run: npx playwright install --with-deps chromium webkit msedge
+      - name: Run E2E against staging
+        working-directory: e2e
+        env:
+          E2E_BASE_URL: ${{ vars.E2E_STAGING_URL }}
+          E2E_ADMIN_EMAIL: ${{ secrets.E2E_ADMIN_EMAIL }}
+          E2E_ADMIN_PASSWORD: ${{ secrets.E2E_ADMIN_PASSWORD }}
+        run: npx playwright test
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: playwright-report-staging
+          path: e2e/playwright-report/
+          retention-days: 7

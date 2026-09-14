@@ -1,0 +1,69 @@
+"""Mapping library + insurer rule (BRD 2.3/2.4) — configuration, not code."""
+
+from app.llm.prompt import build_system_prompt
+from app.services.library import debt_collection_rule, get_terminology, match_insurer
+
+
+def test_debt_rule_included_insurers():
+    """BRD 2.4: Allianz, Atradius and Coface default to Included."""
+    for name in ["Allianz Trade", "Atradius", "Coface"]:
+        value, matched = debt_collection_rule(name)
+        assert value == "Included"
+        assert matched == name
+
+
+def test_debt_rule_other_insurers_outsourced():
+    value, matched = debt_collection_rule("QBE")
+    assert value == "Outsourced"
+    assert matched == "QBE"
+
+
+def test_debt_rule_matches_document_wording_via_aliases():
+    """'QBE UK LIMITED' as printed in a real quotation must match QBE."""
+    value, matched = debt_collection_rule("QBE UK LIMITED")
+    assert value == "Outsourced"
+    assert matched == "QBE"
+    assert match_insurer("Euler Hermes")["id"] == "allianz"
+    # Cartan Trade UK is the Appointed Representative of The Marine
+    # Insurance Company Limited (RSA-owned capacity) — a quote issued on
+    # Marine paper is the brokerage's "Cartan" quote.
+    # Source: cartantrade.com/legal-notice, confirmed by the client.
+    assert match_insurer("THE MARINE INSURANCE COMPANY LIMITED")["id"] == "cartan"
+
+
+def test_debt_rule_unknown_insurer_defaults_outsourced():
+    value, matched = debt_collection_rule("ACME Credit Insurance plc")
+    assert value == "Outsourced"
+    assert matched is None
+    assert debt_collection_rule(None) == ("Outsourced", None)
+
+
+def test_terminology_covers_every_extracted_scalar():
+    """Every normalized comparison row must have library wordings."""
+    terminology = get_terminology()
+    for field in [
+        "annual_turnover", "premium_rate", "estimated_annual_premium_exc_ipt",
+        "minimum_annual_premium", "credit_limit_charges", "indemnity",
+        "excess", "excess_type", "max_annual_liability", "discretionary_limit",
+        "max_terms_of_payment", "max_extension_period",
+    ]:
+        assert terminology.get(field), f"no mapping-library entry for {field}"
+
+
+def test_prompt_is_built_from_the_library():
+    prompt = build_system_prompt()
+    # Wordings from the client's official terminology sheets must reach the
+    # LLM: Nexus, Atradius, Coface, Allianz.
+    assert "Uninsured Amount" in prompt
+    assert "Projected Insurable Turnover" in prompt
+    assert "Deductible Value" in prompt
+    assert "Approved Limit fees" in prompt
+    # The standing insurer list aids identification (Cartan from the
+    # approved sample deck's approached list included).
+    assert "Tokio Marine HCC" in prompt
+    assert "Cartan" in prompt
+    # Set fields stay excluded.
+    assert 'DO NOT extract "type of policy"' in prompt
+    # A Protracted Default waiting period must not map to extension period
+    # (seen conflated on a real Zurich indication).
+    assert "Protracted Default" in prompt

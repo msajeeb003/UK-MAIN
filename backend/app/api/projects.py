@@ -1,0 +1,143 @@
+"""Project storage endpoints (BRD 2.9 / S2): save, list, reopen, delete;
+retained documents and downloadable exports.
+
+The project body is the reviewed UI state as one JSON blob — the server
+stores it verbatim, never edits it. No versioning in this build.
+"""
+
+import json
+import shutil
+from typing import Annotated
+
+import pymupdf
+from fastapi import APIRouter, Depends, HTTPException, Response
+from pydantic import BaseModel, Field
+
+from app.core import audit, db
+from app.core.auth import require_user
+from app.core.config import get_settings
+
+router = APIRouter(dependencies=[Depends(require_user)])
+
+_MAX_STATE_BYTES = 2 * 1024 * 1024
+
+
+class ProjectState(BaseModel):
+    id: str = Field(min_length=1, max_length=64)
+    state: dict
+
+
+@router.get("/projects")
+def list_projects() -> dict:
+    rows = db.query("SELECT state FROM projects ORDER BY updated DESC")
+    return {"projects": [json.loads(r["state"]) for r in rows]}
+
+
+@router.post("/projects")
+def save_project(body: ProjectState,
+                 user: Annotated[dict, Depends(require_user)]) -> dict:
+    blob = json.dumps(body.state)
+    if len(blob) > _MAX_STATE_BYTES:
+        raise HTTPException(status_code=413, detail="Project state too large.")
+    existed = db.query_one("SELECT 1 AS x FROM projects WHERE id=?", (body.id,))
+    state = body.state
+    db.execute(
+        "INSERT INTO projects (id, client_name, updated, state) VALUES (?,?,?,?) "
+        "ON CONFLICT(id) DO UPDATE SET client_name=excluded.client_name, "
+        "updated=excluded.updated, state=excluded.state",
+        (body.id, str(state.get("clientName") or ""), db.now(), blob),
+    )
+    # Metadata-only audit: which key values are confirmed and the chosen
+    # recommendation travel in the saved state — no document contents.
+    confirmed = [k for k, v in (state.get("confirmed") or {}).items() if v]
+    audit.record(
+        "project.create" if not existed else "project.save",
+        target=body.id, actor=user["email"],
+        client_name=str(state.get("clientName") or ""),
+        confirmed=confirmed, recommended=state.get("recommended"),
+    )
+    return {"ok": True}
+
+
+def delete_project_data(project_id: str) -> None:
+    """Erase a project everywhere in live storage: DB rows (documents,
+    exports, metrics, the project) atomically, then its files. Reused by the
+    on-request delete and the scheduled retention purge. Idempotent — safe to
+    call for an already-deleted project. Files go LAST (a filesystem delete
+    cannot be rolled back, so the recoverable DB delete commits first)."""
+    db.execute_transaction([
+        ("DELETE FROM documents WHERE project_id=?", (project_id,)),
+        ("DELETE FROM exports WHERE project_id=?", (project_id,)),
+        ("DELETE FROM metrics WHERE project_id=?", (project_id,)),
+        ("DELETE FROM projects WHERE id=?", (project_id,)),
+    ])
+    folder = get_settings().data_path / "projects" / project_id
+    shutil.rmtree(folder, ignore_errors=True)
+
+
+@router.delete("/projects/{project_id}")
+def delete_project(project_id: str,
+                   user: Annotated[dict, Depends(require_user)]) -> dict:
+    """Right-to-erasure (BRD 2.11): an admin deletes a client/project on
+    request, removing all DB rows and files. Note: point-in-time backups made
+    before now still contain it until they age out of the backup retention
+    window (see docs/DATA_RETENTION.md)."""
+    delete_project_data(project_id)
+    # The audit entry deliberately survives the deletion (append-only).
+    audit.record("project.delete", target=project_id, actor=user["email"])
+    return {"ok": True}
+
+
+@router.get("/projects/{project_id}/exports/{format}")
+def download_export(project_id: str, format: str) -> Response:
+    """The latest generated file of this format (BRD S2 download links)."""
+    row = db.query_one(
+        "SELECT filename, stored_path FROM exports WHERE project_id=? AND format=?",
+        (project_id, format),
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail="No export generated yet.")
+    try:
+        # `with` guarantees the handle is closed even if read() raises —
+        # on Windows an un-closed handle keeps the file locked, which would
+        # then block the next export (regeneration overwrites this path).
+        with open(row["stored_path"], "rb") as f:
+            content = f.read()
+    except OSError as exc:
+        raise HTTPException(status_code=404, detail="Export file missing.") from exc
+    media = {
+        "pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        "pdf": "application/pdf",
+        "limits-xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    }.get(format, "application/octet-stream")
+    return Response(
+        content=content, media_type=media,
+        headers={"Content-Disposition": f'attachment; filename="{row["filename"]}"'},
+    )
+
+
+@router.get("/documents/{document_id}/page/{page}")
+def document_page(document_id: str, page: int) -> Response:
+    """One page of a retained PDF as an image — S5: clicking a value opens
+    the source page. Excel documents have no page image (404)."""
+    row = db.query_one(
+        "SELECT stored_path FROM documents WHERE id=?", (document_id,)
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail="Document not found.")
+    try:
+        doc = pymupdf.open(row["stored_path"])
+    except Exception as exc:
+        raise HTTPException(status_code=404, detail="Not a renderable PDF.") from exc
+    try:
+        if not 1 <= page <= doc.page_count:
+            raise HTTPException(status_code=404, detail="Page out of range.")
+        pix = doc[page - 1].get_pixmap(dpi=120)
+        png = pix.tobytes("png")
+        page_count = doc.page_count
+    finally:
+        doc.close()
+    # X-Page-Count lets the viewer offer prev/next without a second request.
+    return Response(content=png, media_type="image/png",
+                    headers={"Cache-Control": "private, max-age=3600",
+                             "X-Page-Count": str(page_count)})

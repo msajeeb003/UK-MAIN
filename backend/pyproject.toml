@@ -1,0 +1,21 @@
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+# E/F: pycodestyle + pyflakes, I: import sorting, B: bugbear (common pitfalls),
+# UP: modernize syntax, S: security (bandit rules)
+select = ["E", "F", "I", "B", "UP", "S"]
+ignore = [
+  "E501",  # long lines in prompts/HTML strings are deliberate
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S101"]  # asserts are the point of tests
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+# Put backend/ on sys.path so `pytest` finds the `app` package however it
+# is invoked (CI runs the bare `pytest` binary, which does not add CWD).
+pythonpath = ["."]

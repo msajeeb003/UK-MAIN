@@ -1,0 +1,217 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * Design tokens. The light palette is the approved wireframe
+ * (E:\Quote Comparison Tool Wireframes.html): accent #4f46e5, ink #0f1729,
+ * bg #f4f5f8, set-purple #7c3aed, ok #0f9d6b, warn #b45309, with
+ * Plus Jakarta Sans + IBM Plex Mono. shadcn's semantic variables map onto
+ * those tokens so every ui/* component picks the theme up automatically.
+ */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-jakarta), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-heading: var(--font-sans);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+
+  /* Wireframe-specific tokens, usable as `bg-ok-soft`, `text-set`, etc. */
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink2);
+  --color-ink-3: var(--ink3);
+  --color-line: var(--line);
+  --color-line-2: var(--line2);
+  --color-panel: var(--panel);
+  --color-surface: var(--surface);
+  --color-ok: var(--ok);
+  --color-ok-soft: var(--ok-soft);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --color-set: var(--set);
+  --color-set-soft: var(--set-soft);
+  --color-rec: var(--rec);
+  --shadow-card: var(--sh-sm);
+  --shadow-float: var(--sh);
+  --shadow-modal: var(--sh-lg);
+}
+
+:root {
+  /* Wireframe palette */
+  --bg: #f4f5f8;
+  --surface: #ffffff;
+  --panel: #fafbfc;
+  --ink: #0f1729;
+  --ink2: #556072;
+  --ink3: #9aa4b2;
+  --line: #e8ebf0;
+  --line2: #f0f2f5;
+  --accent-brand: #4f46e5;
+  --accent-brand-hover: #4338ca;
+  --accent-brand-soft: #eef0fe;
+  --ok: #0f9d6b;
+  --ok-soft: #e6f6ee;
+  --warn: #b45309;
+  --warn-soft: #fdf1e3;
+  --set: #7c3aed;
+  --set-soft: #f3edff;
+  --rec: #eef0fe;
+  --sh-sm: 0 1px 3px rgba(16, 24, 40, 0.05), 0 4px 14px rgba(16, 24, 40, 0.04);
+  --sh: 0 6px 20px rgba(16, 24, 40, 0.07);
+  --sh-lg: 0 16px 40px rgba(16, 24, 40, 0.12);
+
+  /* shadcn semantic variables mapped onto the palette */
+  --background: var(--bg);
+  --foreground: var(--ink);
+  --card: var(--surface);
+  --card-foreground: var(--ink);
+  --popover: var(--surface);
+  --popover-foreground: var(--ink);
+  --primary: var(--accent-brand);
+  --primary-foreground: #ffffff;
+  --secondary: var(--accent-brand-soft);
+  --secondary-foreground: var(--accent-brand);
+  --muted: var(--line2);
+  --muted-foreground: var(--ink2);
+  --accent: var(--accent-brand-soft);
+  --accent-foreground: var(--accent-brand-hover);
+  --destructive: #dc2626;
+  --border: var(--line);
+  --input: var(--line);
+  --ring: var(--accent-brand);
+  --chart-1: #4f46e5;
+  --chart-2: #7c3aed;
+  --chart-3: #0f9d6b;
+  --chart-4: #b45309;
+  --chart-5: #556072;
+  --radius: 0.75rem;
+  --sidebar: var(--surface);
+  --sidebar-foreground: var(--ink);
+  --sidebar-primary: var(--accent-brand);
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: var(--accent-brand-soft);
+  --sidebar-accent-foreground: var(--accent-brand-hover);
+  --sidebar-border: var(--line);
+  --sidebar-ring: var(--accent-brand);
+}
+
+.dark {
+  --bg: #0d1226;
+  --surface: #151b33;
+  --panel: #1a2140;
+  --ink: #eef0f6;
+  --ink2: #aab3c5;
+  --ink3: #6f7a90;
+  --line: #262e4a;
+  --line2: #1f2742;
+  --accent-brand: #7b74f0;
+  --accent-brand-hover: #948ef4;
+  --accent-brand-soft: #262a56;
+  --ok: #34c58f;
+  --ok-soft: #10301f;
+  --warn: #f2a23a;
+  --warn-soft: #3a2710;
+  --set: #a78bfa;
+  --set-soft: #2d2350;
+  --rec: #262a56;
+  --sh-sm: 0 1px 3px rgba(0, 0, 0, 0.35), 0 4px 14px rgba(0, 0, 0, 0.25);
+  --sh: 0 6px 20px rgba(0, 0, 0, 0.35);
+  --sh-lg: 0 16px 40px rgba(0, 0, 0, 0.5);
+
+  --background: var(--bg);
+  --foreground: var(--ink);
+  --card: var(--surface);
+  --card-foreground: var(--ink);
+  --popover: var(--surface);
+  --popover-foreground: var(--ink);
+  --primary: var(--accent-brand);
+  --primary-foreground: #ffffff;
+  --secondary: var(--accent-brand-soft);
+  --secondary-foreground: var(--accent-brand-hover);
+  --muted: var(--line2);
+  --muted-foreground: var(--ink2);
+  --accent: var(--accent-brand-soft);
+  --accent-foreground: var(--accent-brand-hover);
+  --destructive: #f87171;
+  --border: var(--line);
+  --input: var(--line);
+  --ring: var(--accent-brand);
+  --sidebar: var(--surface);
+  --sidebar-foreground: var(--ink);
+  --sidebar-primary: var(--accent-brand);
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: var(--accent-brand-soft);
+  --sidebar-accent-foreground: var(--accent-brand-hover);
+  --sidebar-border: var(--line);
+  --sidebar-ring: var(--accent-brand);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    @apply font-sans;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+  }
+  ::selection {
+    background: #e0e0fe;
+  }
+  .dark ::selection {
+    background: #2f2f7a;
+  }
+}
+
+@layer utilities {
+  /* Small uppercase mono label used for table column heads and chips. */
+  .label-mono {
+    @apply font-mono text-[11px] tracking-[0.5px] uppercase text-ink-3;
+  }
+  /* The wireframe's "hero" gradient (login left panel). */
+  .hero-gradient {
+    background:
+      radial-gradient(115% 115% at 100% 0%, rgba(99, 102, 241, 0.4), transparent 52%),
+      radial-gradient(105% 105% at 0% 100%, rgba(124, 58, 237, 0.3), transparent 48%),
+      linear-gradient(155deg, #0d1226, #1a2350);
+  }
+}

@@ -1,0 +1,19 @@
+# Runtime dependencies — pinned to the versions the pilot was tested with.
+fastapi==0.141.1
+uvicorn[standard]==0.52.4
+gunicorn==23.0.0          # multi-worker process manager (production, Linux)
+python-multipart==0.0.32
+PyMuPDF==1.28.2
+azure-ai-documentintelligence==1.0.2
+openpyxl==3.1.5
+xlrd==2.0.2
+python-pptx==1.0.2
+openai==3.8.0
+anthropic==1.4.0
+pydantic==2.13.5
+pydantic-settings==2.15.0
+python-dotenv==1.2.3
+cryptography==50.0.1      # Fernet-encrypted backups
+boto3==1.35.36            # S3-compatible offsite backup upload (lazy-imported)
+sentry-sdk==2.69.1        # error tracking (DSN-gated; no-op when unset)
+PyJWT==2.10.1             # Supabase Auth bearer-token verification (HS256 / JWKS)
