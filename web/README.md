@@ -38,6 +38,14 @@ npm run typecheck   # next typegen + tsc --noEmit
 npm run build       # production build
 ```
 
+### Dev server shows 404 for a route that exists
+
+On a slow or external drive (Next prints "Slow filesystem detected"), Turbopack's
+first scan can miss the nested `projects/[projectId]/*` routes, so the first
+visit returns the 404 page. Re-save (touch) any file under that folder, or
+restart `npm run dev`; the route is picked up immediately. Production builds
+are unaffected. Keeping the checkout on a local drive avoids it entirely.
+
 ## Layout
 
 ```
