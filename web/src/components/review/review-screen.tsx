@@ -84,13 +84,20 @@ function ReviewBody({ project }: { project: ProjectState }) {
     docId: col.docId ?? null,
     page,
     pages: col.pages ?? null,
+    manual: col.manual,
   });
 
   /** A cell was focused: the side panel follows it to the cited page. */
   const selectCell = (col: ProjectColumn, field: FieldDef, page: number | null) => {
-    if (col.manual) return;
     setSource(refFor(col, field, page));
   };
+
+  const hasDocuments = columns.some((c) => c.docId);
+  const emptyHint = !columns.length
+    ? "No quotes uploaded yet. Once a quote is extracted, click any value here to see the page it came from."
+    : !hasDocuments
+      ? "The columns in this comparison have no retained document (free-format or an older project), so there are no source pages to show."
+      : "Select a value in the grid to see the page it came from.";
 
   /** The page chip was clicked: open the page, expanded (modal on small screens). */
   const openSource = (col: ProjectColumn, field: FieldDef, page: number) => {
@@ -177,7 +184,7 @@ function ReviewBody({ project }: { project: ProjectState }) {
                   </Button>
                 </div>
               </div>
-              <SourceViewer source={source} className="min-h-0 flex-1" />
+              <SourceViewer source={source} emptyHint={emptyHint} className="min-h-0 flex-1" />
             </aside>
           )}
         </div>

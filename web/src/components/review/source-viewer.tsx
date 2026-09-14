@@ -19,12 +19,16 @@ export interface SourceRef {
   pages?: number | null;
   /** Term the value belongs to (caption detail). */
   term?: string;
+  /** Free-format column: the value was typed by the broker, no document behind it. */
+  manual?: boolean;
 }
 
 interface SourceViewerProps {
   source: SourceRef | null;
   /** Compact chrome for the side panel; larger for the modal. */
   size?: "panel" | "modal";
+  /** Message for the empty state (why there is nothing to show yet). */
+  emptyHint?: string;
   className?: string;
 }
 
@@ -40,7 +44,7 @@ const keyOf = (docId: string, page: number) => `${docId}:${page}`;
  * the backend's rendered images, fetched through the authenticated client
  * (an <img src> cannot carry the Bearer token) and cached for the session.
  */
-export function SourceViewer({ source, size = "panel", className }: SourceViewerProps) {
+export function SourceViewer({ source, size = "panel", emptyHint, className }: SourceViewerProps) {
   const docId = source?.docId ?? null;
   const [page, setPage] = useState<number>(source?.page ?? 1);
   const [followed, setFollowed] = useState<string>("");
@@ -92,7 +96,7 @@ export function SourceViewer({ source, size = "panel", className }: SourceViewer
     return (
       <div className={cn("flex h-full flex-col items-center justify-center gap-2 p-6 text-center text-sm text-muted-foreground", className)}>
         <FileText className="size-6" />
-        Select a value in the grid to see the page it came from.
+        {emptyHint ?? "Select a value in the grid to see the page it came from."}
       </div>
     );
   }
@@ -104,7 +108,7 @@ export function SourceViewer({ source, size = "panel", className }: SourceViewer
           <div className="truncate text-sm font-semibold">{source.caption}</div>
           <div className="truncate font-mono text-[11px] text-ink-3">
             {source.term ? `${source.term} · ` : ""}
-            {source.page ? `cited on page ${source.page}` : "no page reference for this value"}
+            {source.manual ? "entered by the broker" : source.page ? `cited on page ${source.page}` : "no page reference for this value"}
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-1">
@@ -132,7 +136,9 @@ export function SourceViewer({ source, size = "panel", className }: SourceViewer
       >
         {!docId ? (
           <div className="grid aspect-[1/1.3] place-items-center rounded border bg-muted p-4 text-center font-mono text-xs text-muted-foreground">
-            No retained document for this column (free-format or older project).
+            {source.manual
+              ? "Free-format column: this value was entered by the broker, so there is no source document."
+              : "No retained document for this column (older project). Re-upload the quote to link its pages."}
           </div>
         ) : loading ? (
           <Skeleton className="aspect-[1/1.3] w-full" />
