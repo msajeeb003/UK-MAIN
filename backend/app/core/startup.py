@@ -67,6 +67,11 @@ def run_startup_checks() -> None:
             fatal.append(
                 "No LLM provider key set (ANTHROPIC_API_KEY or OPENAI_API_KEY)."
             )
+        # Supabase tokens carry the issuer and, without the legacy secret, the
+        # JWKS is fetched from this URL — plain http would let a network
+        # attacker serve keys of their choosing.
+        if s.supabase_url and not s.supabase_url.startswith("https://"):
+            fatal.append("SUPABASE_URL must use https in production.")
 
     # No-training / no-retention posture on the network provider path —
     # enforced whenever a real provider would receive data, in any environment
@@ -93,3 +98,8 @@ def run_startup_checks() -> None:
         logger.warning("Production without backups configured — see docs/BACKUP.md")
     if prod and not s.sentry_dsn:
         logger.warning("Production without Sentry configured — see docs/OBSERVABILITY.md")
+    if prod and not s.supabase_auth_enabled:
+        logger.warning(
+            "Production without Supabase Auth configured (SUPABASE_URL / "
+            "SUPABASE_JWT_SECRET) — the Next.js app cannot sign in; see docs/AUTH.md"
+        )

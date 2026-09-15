@@ -15,8 +15,9 @@ logging, or error messages — use `.get_secret_value()` at the call site.
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
+from urllib.parse import urlsplit
 
-from pydantic import SecretStr
+from pydantic import SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # .env lives at the repository root (one level above backend/), so the same
@@ -136,6 +137,36 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         extra="ignore",
     )
+
+    @field_validator("supabase_url")
+    @classmethod
+    def _supabase_origin(cls, value: str) -> str:
+        """SUPABASE_URL is the project origin (`https://<ref>.supabase.co`):
+        the issuer and JWKS URL are derived from it, so a path, query or a
+        non-http scheme would silently make every token fail verification.
+        Normalised without a trailing slash; empty disables bearer auth."""
+        value = value.strip().rstrip("/")
+        if not value:
+            return ""
+        parts = urlsplit(value)
+        if parts.scheme not in ("http", "https") or not parts.netloc:
+            raise ValueError("SUPABASE_URL must be an http(s) origin such as https://<ref>.supabase.co")
+        if parts.path or parts.query or parts.fragment:
+            raise ValueError("SUPABASE_URL must be the project origin only (no path or query)")
+        return value
+
+    @field_validator("supabase_jwt_audience")
+    @classmethod
+    def _audience_not_blank(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("SUPABASE_JWT_AUDIENCE cannot be blank")
+        return value
+
+    @property
+    def supabase_auth_enabled(self) -> bool:
+        """Bearer-token auth is on when either verification path is configured."""
+        return bool(self.supabase_url or self.supabase_jwt_secret.get_secret_value())
 
     @property
     def data_path(self) -> Path:

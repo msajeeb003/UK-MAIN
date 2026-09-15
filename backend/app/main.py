@@ -18,6 +18,8 @@ import secrets
 import threading
 import time
 from collections import deque
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Request, Response
@@ -44,11 +46,57 @@ _PROD = is_production()
 
 _SESSION_CLEANUP_INTERVAL = 3600   # seconds between expired-session sweeps
 _RETENTION_INTERVAL = 86400        # seconds between retention purges (daily)
-_background_tasks: set[asyncio.Task] = set()
 
 # backend/app/main.py -> repo root -> frontend/ (kept fully separate from
 # the backend; the server only serves its static files).
 FRONTEND_DIR = Path(__file__).resolve().parents[2] / "frontend"
+
+async def _run_periodically(name: str, interval: int, job) -> None:
+    """Run `job` once now and then every `interval` seconds until cancelled.
+    A failing run is logged and retried on the next tick, never fatal."""
+    while True:
+        try:
+            await job()
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("%s failed", name)
+        await asyncio.sleep(interval)
+
+
+async def _purge_expired_projects() -> None:
+    """Hard-delete projects past RETENTION_DAYS (no-op when retention is
+    disabled). Idempotent, so running per worker is safe; a Railway cron on
+    `python -m app.retention run` works too."""
+    from app.retention import purge_expired
+
+    if get_settings().retention_days > 0:
+        await asyncio.to_thread(purge_expired)
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    """Process start-up and shutdown (replaces the deprecated on_event hooks).
+
+    Start-up: seed the first user from the environment (BRD 2.10: no
+    self-registration), then launch the housekeeping loops — expired-session
+    sweep hourly and the retention purge daily — as plain asyncio tasks.
+    Shutdown: cancel the loops so a worker exits cleanly."""
+    seed_admin_if_empty()
+    tasks = [
+        asyncio.create_task(_run_periodically(
+            "Expired-session cleanup", _SESSION_CLEANUP_INTERVAL,
+            lambda: asyncio.to_thread(delete_expired_sessions))),
+        asyncio.create_task(_run_periodically(
+            "Retention purge", _RETENTION_INTERVAL, _purge_expired_projects)),
+    ]
+    try:
+        yield
+    finally:
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+
 
 app = FastAPI(
     title="Insurance Quote Extraction API",
@@ -63,6 +111,7 @@ app = FastAPI(
     docs_url=None if _PROD else "/docs",
     redoc_url=None if _PROD else "/redoc",
     openapi_url=None if _PROD else "/openapi.json",
+    lifespan=lifespan,
 )
 
 app.include_router(router)
@@ -97,50 +146,6 @@ async def request_context(request: Request, call_next) -> Response:
                                              "duration_ms": took}})
     return response
 
-
-@app.on_event("startup")
-def _startup() -> None:
-    # BRD 2.10: no self-registration — first user comes from the environment.
-    seed_admin_if_empty()
-
-
-@app.on_event("startup")
-async def _start_session_cleanup() -> None:
-    """Purge expired sessions once at startup, then every hour — instead of
-    on every auth check. Pure asyncio, no external scheduler."""
-    async def loop() -> None:
-        while True:
-            try:
-                delete_expired_sessions()
-            except Exception:
-                logger.exception("Expired-session cleanup failed")
-            await asyncio.sleep(_SESSION_CLEANUP_INTERVAL)
-
-    # Keep a reference so the task is not garbage-collected mid-run.
-    task = asyncio.create_task(loop())
-    _background_tasks.add(task)
-    task.add_done_callback(_background_tasks.discard)
-
-
-@app.on_event("startup")
-async def _start_retention_purge() -> None:
-    """Hard-delete projects past RETENTION_DAYS, once at startup then daily.
-    No-op when retention is disabled. Idempotent, so running per worker is
-    safe; a Railway cron on `python -m app.retention run` works too."""
-    from app.retention import purge_expired
-
-    async def loop() -> None:
-        while True:
-            try:
-                if get_settings().retention_days > 0:
-                    await asyncio.to_thread(purge_expired)
-            except Exception:
-                logger.exception("Retention purge failed")
-            await asyncio.sleep(_RETENTION_INTERVAL)
-
-    task = asyncio.create_task(loop())
-    _background_tasks.add(task)
-    task.add_done_callback(_background_tasks.discard)
 
 # The frontend uses inline style attributes and Google Fonts; scripts are
 # strictly same-origin files (no inline handlers anywhere).

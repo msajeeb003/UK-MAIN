@@ -91,6 +91,11 @@ keeps using the cookie session above. Both credentials are accepted by
   `SUPABASE_URL/auth/v1/.well-known/jwks.json` (cached). Required: `exp`,
   `sub`, `email`, `role == authenticated`, `aud == authenticated`, and the
   issuer `SUPABASE_URL/auth/v1`. Both settings empty = bearer auth disabled.
+- Configuration is validated on boot (`app/core/config.py`,
+  `app/core/startup.py`): `SUPABASE_URL` must be the bare project origin,
+  and in production it must be `https://` (fatal otherwise); production
+  without Supabase configured logs a warning because the Next.js app cannot
+  sign in.
 - Audit entries record the Supabase email as the actor.
 
 **No self-registration.** The app has no sign-up, reset or magic-link path.

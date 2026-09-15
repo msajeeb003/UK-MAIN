@@ -34,8 +34,7 @@ _jwks_url = ""
 
 
 def is_configured() -> bool:
-    s = get_settings()
-    return bool(s.supabase_url or s.supabase_jwt_secret.get_secret_value())
+    return get_settings().supabase_auth_enabled
 
 
 def _jwks(url: str) -> PyJWKClient:
