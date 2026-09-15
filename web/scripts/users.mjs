@@ -111,18 +111,33 @@ switch (command) {
     console.log(`✔ Enabled ${email}.`);
     break;
   }
+  case "role": {
+    // app_metadata is writable with the service role only, so the admin
+    // role in the token cannot be self-assigned from the browser.
+    const role = (process.argv[4] || "").toLowerCase();
+    if (!email || !["admin", "broker"].includes(role)) fail("Usage: users role <email> <admin|broker>");
+    const user = await findByEmail(email);
+    const { error } = await supabase.auth.admin.updateUserById(user.id, {
+      app_metadata: { ...(user.app_metadata || {}), role },
+    });
+    if (error) fail(error.message);
+    await supabase.auth.admin.signOut(user.id, "global").catch(() => {});
+    console.log(`✔ ${email} is now ${role} (signed out everywhere; the new role applies at next sign-in).`);
+    break;
+  }
   case "list": {
     const { data, error } = await supabase.auth.admin.listUsers({ page: 1, perPage: 1000 });
     if (error) fail(error.message);
     for (const u of data.users) {
       const name = u.user_metadata?.name || "";
+      const role = u.app_metadata?.role === "admin" ? " [admin]" : "";
       const banned = u.banned_until && new Date(u.banned_until) > new Date() ? " [disabled]" : "";
-      console.log(`${u.email}\t${name}\tlast sign-in: ${u.last_sign_in_at || "never"}${banned}`);
+      console.log(`${u.email}\t${name}\tlast sign-in: ${u.last_sign_in_at || "never"}${role}${banned}`);
     }
     if (!data.users.length) console.log("(no users)");
     break;
   }
   default:
-    console.log("Usage: npm run users -- <create <email> [name] | reset <email> | disable <email> | enable <email> | list>");
+    console.log("Usage: npm run users -- <create <email> [name] | reset <email> | disable <email> | enable <email> | role <email> <admin|broker> | list>");
     process.exit(command ? 1 : 0);
 }

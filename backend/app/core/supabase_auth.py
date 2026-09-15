@@ -96,4 +96,8 @@ def verify_token(token: str) -> dict | None:
         return None
     meta = claims.get("user_metadata") or {}
     name = meta.get("name") or meta.get("full_name") or ""
-    return {"id": claims["sub"], "email": email, "name": str(name)}
+    # app_metadata is set server-side only (service role), so the role
+    # claim cannot be self-assigned from the browser.
+    app_meta = claims.get("app_metadata") or {}
+    role = "admin" if app_meta.get("role") == "admin" else "broker"
+    return {"id": claims["sub"], "email": email, "name": str(name), "role": role}

@@ -63,5 +63,6 @@ def me(user: Annotated[dict, Depends(auth.require_user)],
     return {
         "email": user["email"],
         "name": user["name"],
+        "role": user.get("role", "broker"),
         "csrf_token": auth.csrf_token_for(qct_session) or "",
     }

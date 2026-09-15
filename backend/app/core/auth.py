@@ -14,8 +14,9 @@ import hashlib
 import logging
 import secrets
 import sqlite3
+from typing import Annotated
 
-from fastapi import Cookie, Header, HTTPException
+from fastapi import Cookie, Depends, Header, HTTPException
 
 from app.core import db, supabase_auth
 from app.core.config import get_settings
@@ -246,4 +247,20 @@ def require_user(qct_session: str | None = Cookie(default=None),
         user = user_for_token(qct_session)
     if user is None:
         raise HTTPException(status_code=401, detail="Sign in required.")
+    user["role"] = resolve_role(user)
+    return user
+
+
+def resolve_role(user: dict) -> str:
+    """"admin" when the Supabase token carries app_metadata.role = admin or
+    the email is in ADMIN_EMAILS; otherwise "broker"."""
+    if user.get("role") == "admin":
+        return "admin"
+    return "admin" if user.get("email", "") in get_settings().admin_email_set else "broker"
+
+
+def require_admin(user: Annotated[dict, Depends(require_user)]) -> dict:
+    """FastAPI dependency for the configuration endpoints (role-gated)."""
+    if user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin role required.")
     return user

@@ -28,12 +28,14 @@ from fastapi.staticfiles import StaticFiles
 
 from app.api.audit import router as audit_router
 from app.api.auth import router as auth_router
+from app.api.config import router as config_router
 from app.api.documents import router as documents_router
 from app.api.grid import router as grid_router
 from app.api.jobs import router as jobs_router
 from app.api.limits import router as limits_router
 from app.api.observability import router as observability_router
 from app.api.projects import router as projects_router
+from app.api.recommendation import router as recommendation_router
 from app.api.routes import router
 from app.core import auth as auth_core
 from app.core import observability as obs
@@ -128,6 +130,8 @@ app.include_router(projects_router)
 app.include_router(documents_router)
 app.include_router(grid_router)
 app.include_router(limits_router)
+app.include_router(recommendation_router)
+app.include_router(config_router)
 app.include_router(observability_router)
 app.include_router(audit_router)
 app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="frontend")

@@ -92,6 +92,10 @@ class Settings(BaseSettings):
     # Empty = local files under DATA_DIR (development/tests).
     supabase_service_role_key: SecretStr = SecretStr("")
     supabase_storage_bucket: str = "documents"
+    # Admin role (config endpoints): a Supabase user with app_metadata.role
+    # = "admin" (web: `npm run users -- role <email> admin`), or any email
+    # listed here (comma-separated) — also covers the classic cookie login.
+    admin_emails: str = ""
     # Data retention (BRD 2.11): hard-delete projects untouched for longer
     # than this many days. 0 = disabled (keep forever) — the period is the
     # client's decision, so nothing is deleted until they set it.
@@ -194,6 +198,10 @@ class Settings(BaseSettings):
         if scheme.lower() in ("postgres", "postgresql"):
             return "postgresql+psycopg://" + rest
         return url
+
+    @property
+    def admin_email_set(self) -> frozenset[str]:
+        return frozenset(e.strip().lower() for e in self.admin_emails.split(",") if e.strip())
 
     @property
     def supabase_storage_enabled(self) -> bool:

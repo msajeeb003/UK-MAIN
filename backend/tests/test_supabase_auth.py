@@ -62,6 +62,7 @@ def test_verify_token_normalises_email_and_name(monkeypatch):
         "id": "3d5e0c4a-1111-4222-8333-444455556666",
         "email": "broker@ukcib.co.uk",
         "name": "S. Broker",
+        "role": "broker",
     }
 
 

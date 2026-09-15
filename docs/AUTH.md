@@ -98,6 +98,13 @@ keeps using the cookie session above. Both credentials are accepted by
   sign in.
 - Audit entries record the Supabase email as the actor.
 
+**Roles.** Every account is a broker. The configuration endpoints
+(`/config/*`, see docs/DATABASE.md) need the **admin** role: set
+`app_metadata.role = "admin"` with `npm run users -- role <email> admin`
+(service role only — a user cannot grant it to themselves; the change
+applies at the next sign-in), or list the email in `ADMIN_EMAILS`. The
+backend reports the role in `GET /auth/me`.
+
 **No self-registration.** The app has no sign-up, reset or magic-link path.
 Accounts are managed by an administrator with the service-role key
 (`cd web && npm run users -- create|reset|disable|enable|list`), which prints

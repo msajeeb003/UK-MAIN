@@ -34,7 +34,7 @@ from app.models.presentation import PresentationRequest
 from app.models.schemas import ExtractionResponse
 from app.services import documents as docs
 from app.services import projects as projects_repo
-from app.services.library import get_insurers
+from app.services.library import active_insurers
 from app.services.pipeline import EngineOverride, FileKind, run_extraction_pipeline
 from app.services.presentation import (
     build_limits_xlsx,
@@ -84,7 +84,8 @@ async def insurers() -> dict:
     Served from config/insurers.json — configuration, not code, so edits
     take effect without a release.
     """
-    return {"insurers": get_insurers()}
+    return {"insurers": [{"id": i["id"], "name": i["name"], "debt_collection": i["debt_collection"]}
+                         for i in active_insurers()]}
 
 
 def _http_from_pipeline_error(exc: PipelineError, context: str) -> HTTPException:

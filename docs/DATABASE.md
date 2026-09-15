@@ -138,6 +138,41 @@ Downloads are built from the current table on each request, named
 content. The presentation's own credit-limit page and its `limits-xlsx`
 export (S8) are unchanged.
 
+## Recommendation (`app/services/recommendation.py`, `app/api/recommendation.py`)
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/projects/{id}/recommendation` | `insurer` (canonical name), `column_id`, `reasons`, `key_differences`, the `candidates` (columns with a quote) and the `declined` insurers. |
+| `PUT` | `/projects/{id}/recommendation` `{insurer, reasons, key_differences}` | Set the recommended insurer by canonical name (legal names and ids are accepted too); it must own a quote column here — a declined insurer (approached, no quote) or one outside the project → 422. `null` clears the choice and keeps the texts. |
+
+Stored in the working document as the S7 screen stores it (`recommended`
+= column id, `reasons`, `keyDifferences`).
+
+## Admin configuration (`app/services/config_store.py`, `app/api/config.py`)
+
+The standing insurer list and the terminology map are **configuration,
+not code** (BRD 2.3/2.4). They live as versioned documents in the
+`config_documents` table (`name`, `data` JSONB, `version`, `updated_by`,
+`updated_at`); the repository's `config/insurers.json` and
+`config/terminology.json` are the seed used until an admin first saves.
+`app/services/library.py` reads through the store — each worker re-checks
+the version every two seconds, so a change applies to the next pipeline
+run with no restart. Every save is audited (`config.insurers`,
+`config.terminology`: who, when, version).
+
+Role gate: `require_admin` — a Supabase user whose `app_metadata.role` is
+`admin` (`cd web && npm run users -- role <email> admin`; set with the
+service role, so it cannot be self-assigned) or an email in
+`ADMIN_EMAILS`. Anyone else gets 403.
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` / `PUT` | `/config/insurers` | `insurers: [{id, name, legal_names, debt_collection: included\|outsourced, active}]` plus `version`, `updated_by`, `updated_at`, `source`. Ids are slugs; names must be unique across canonical and legal names; at least one insurer active. An insurer that still has terminology cannot be removed. |
+| `GET` / `PUT` | `/config/terminology` | `fields: {standard field → [terms]}` for wording any insurer uses and `insurers: {insurer id → {standard field → [terms]}}` for one insurer's wording; every field key must be one of the 16 standard terms (`standard_fields` in the response), insurer keys must be standing-list ids. |
+
+`GET /insurers` (the setup list) returns active insurers only; matching
+of extracted names still knows inactive ones so old projects resolve.
+
 ## Migration from the blob table
 
 Before this store existed, projects were one JSON blob per row in the SQLite

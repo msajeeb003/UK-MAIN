@@ -160,6 +160,8 @@ file under `DATA_DIR` for development and tests.
 | `POST` `PATCH` `DELETE` | `/projects/{id}/limits/rows[/{row}]` | add · edit · remove a buyer row |
 | `PUT` `DELETE` | `/projects/{id}/limits/rows/{row}/offers/{col}` | set · clear one insurer's offered limit |
 | `GET` | `/projects/{id}/limits/export/{xlsx\|pdf}` | download the table as an editable Excel workbook or form-field PDF |
+| `GET` `PUT` | `/projects/{id}/recommendation` | the recommended insurer (canonical name; must have a quote — declined → 422), reasons, key differences |
+| `GET` `PUT` | `/config/insurers` · `/config/terminology` | admin only: standing insurer list + debt rule · terminology map (16 standard fields); versioned, audited, live on the next run |
 
 Uploaded files live in **Supabase Storage** (`SUPABASE_SERVICE_ROLE_KEY`,
 `SUPABASE_STORAGE_BUCKET`; local files under `DATA_DIR` when unset).

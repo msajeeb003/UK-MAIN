@@ -28,9 +28,10 @@ from app.db.models import Base
 
 logger = logging.getLogger(__name__)
 
-_lock = threading.Lock()
+_lock = threading.RLock()
 _engine: Engine | None = None
 _engine_url = ""
+_legacy_imported_for = ""
 
 
 def _build(url: str) -> Engine:
@@ -60,7 +61,7 @@ def _build(url: str) -> Engine:
 
 def get_engine() -> Engine:
     """The process-wide engine for the configured DATABASE_URL."""
-    global _engine, _engine_url
+    global _engine, _engine_url, _legacy_imported_for
     url = get_settings().database_url_effective
     with _lock:
         if _engine is None or _engine_url != url:
@@ -73,8 +74,16 @@ def get_engine() -> Engine:
             Base.metadata.create_all(engine)
             _engine, _engine_url = engine, url
             logger.info("Project store ready (%s)", "postgresql" if url.startswith("postgresql") else "sqlite")
-            _import_legacy(engine)
-    return _engine
+        engine = _engine
+        run_import = _legacy_imported_for != url
+        if run_import:
+            _legacy_imported_for = url          # once per URL, even if it fails
+    # The legacy import reads the insurer list, which itself reads config
+    # from this store: run it with the engine published and the lock free
+    # (the lock is re-entrant as a further safeguard).
+    if run_import:
+        _import_legacy(engine)
+    return engine
 
 
 def _import_legacy(engine: Engine) -> None:
@@ -100,11 +109,11 @@ def init_db() -> None:
 
 
 def dispose() -> None:
-    global _engine, _engine_url
+    global _engine, _engine_url, _legacy_imported_for
     with _lock:
         if _engine is not None:
             _engine.dispose()
-        _engine, _engine_url = None, ""
+        _engine, _engine_url, _legacy_imported_for = None, "", ""
 
 
 @contextmanager

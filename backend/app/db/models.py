@@ -132,3 +132,17 @@ class Document(Base):
         Index("ix_documents_project_id", "project_id"),
         Index("ix_documents_status", "status"),
     )
+
+
+class ConfigDocument(Base):
+    """An admin-maintained configuration document (BRD 2.3/2.4): the
+    standing insurer list or the terminology map, versioned on every save.
+    Until the first save the repository's config/*.json seed applies."""
+
+    __tablename__ = "config_documents"
+
+    name: Mapped[str] = mapped_column(String(40), primary_key=True)
+    data: Mapped[dict] = mapped_column(JSONDocument, nullable=False, default=dict)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    updated_by: Mapped[str] = mapped_column(String(320), nullable=False, default="")
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
