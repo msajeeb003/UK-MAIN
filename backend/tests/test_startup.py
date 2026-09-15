@@ -73,7 +73,12 @@ def test_prod_boots_when_configured(monkeypatch):
     monkeypatch.setattr(s, "llm_no_training_ack", True)   # DPA filed
     monkeypatch.setattr(s, "supabase_url", "https://unit.supabase.co")
     monkeypatch.setattr(s, "database_url", "postgresql://u:p@db.example/quotes")
+    monkeypatch.setattr(s, "supabase_service_role_key", SecretStr("service-role"))
     startup.run_startup_checks()          # no raise
+    monkeypatch.setattr(s, "supabase_service_role_key", SecretStr(""))
+    with pytest.raises(RuntimeError, match="SUPABASE_SERVICE_ROLE_KEY"):
+        startup.run_startup_checks()      # documents must go to Supabase Storage
+    monkeypatch.setattr(s, "supabase_service_role_key", SecretStr("service-role"))
     monkeypatch.setattr(s, "database_url", "")
     with pytest.raises(RuntimeError, match="DATABASE_URL must point at PostgreSQL"):
         startup.run_startup_checks()      # the SQLite fallback is dev-only
@@ -117,6 +122,7 @@ def test_prod_refuses_plain_http_supabase_url(monkeypatch):
     monkeypatch.setattr(s, "llm_no_training_ack", True)
     monkeypatch.setattr(s, "admin_password", SecretStr("Zurich-Atradius-2026!"))
     monkeypatch.setattr(s, "database_url", "postgresql://u:p@db.example/quotes")
+    monkeypatch.setattr(s, "supabase_service_role_key", SecretStr("service-role"))
     monkeypatch.setattr(s, "supabase_url", "http://supabase.internal")
     with pytest.raises(RuntimeError, match="SUPABASE_URL must use https"):
         startup.run_startup_checks()

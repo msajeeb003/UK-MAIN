@@ -154,6 +154,35 @@ export type DocumentType =
 
 export type DocKind = "quote" | "expiring" | "limits";
 
+/** Per-file processing status of an upload (POST /projects/{id}/documents). */
+export type DocumentStatus = "pending" | "processing" | "complete" | "failed";
+
+/** One uploaded file's record: where it is and how far processing got. */
+export interface DocumentRecord {
+  id: string;
+  project_id: string;
+  slot: DocKind;
+  filename: string;
+  content_type: string;
+  size_bytes: number;
+  status: DocumentStatus;
+  /** queued | extracting | done | failed | rejected | storage */
+  stage: string;
+  error: string | null;
+  page_count: number;
+  /** Extraction job to poll for the result while the record is pending/processing. */
+  job_id: string | null;
+  storage_backend: string;
+  uploaded_by: string;
+  uploaded_at: string;
+  updated_at: string;
+  processed_at: string | null;
+}
+
+export interface DocumentBatch {
+  documents: DocumentRecord[];
+}
+
 /** The extracted fields (BRD 16-field list minus the two set fields). */
 export type ExtractedFieldKey =
   | "insurer"

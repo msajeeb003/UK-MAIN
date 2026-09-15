@@ -31,6 +31,13 @@ points at PostgreSQL.
   (the standing list is configuration, not code — BRD 2.4), so there is no
   `insurers` table to join; names are resolved at read time.
 
+- **documents** — one row per uploaded file (BRD S4): `project_id → projects.id
+  ON DELETE CASCADE`, `slot` (`quote` | `expiring` | `limits`), `filename`,
+  `content_type`, `size_bytes`, `storage_backend` + `storage_key` (where the
+  bytes live), `status` (`pending` → `processing` → `complete` | `failed`),
+  `stage`, `error`, `page_count`, `job_id` (the extraction job), `uploaded_by`,
+  `uploaded_at`, `updated_at`, `processed_at`.
+
 The schema is created with `metadata.create_all` at start-up (idempotent).
 Schema *changes* should be shipped as Alembic migrations once the first
 production database exists; none are needed for the initial version.
@@ -51,6 +58,34 @@ production database exists; none are needed for the initial version.
 | `DELETE` | `/projects/{id}/insurers/{insurer_id}` | Remove one insurer → 204. |
 
 Unknown insurer ids → 422 listing them. `state` over 2 MB → 413.
+
+## Documents and Supabase Storage (`app/storage.py`, `app/api/documents.py`)
+
+Uploaded files are objects in **Supabase Storage** (a private bucket,
+written and read server-side with the service-role key — it never reaches
+the browser). The record in `documents` tracks each file's processing.
+
+| Variable | Meaning |
+|---|---|
+| `SUPABASE_SERVICE_ROLE_KEY` | Service-role key (Project Settings → API). Required in production. |
+| `SUPABASE_STORAGE_BUCKET` | Bucket name, default `documents`. Create it as **private**. |
+| *(key empty)* | Development / tests: objects are files under `DATA_DIR/projects/<id>/docs/`. |
+
+Object keys are `projects/<project_id>/docs/<document_id>_<safe filename>`.
+
+| Method | Path | Purpose |
+|---|---|---|
+| `POST` | `/projects/{id}/documents` (multipart: `files[]`, `slot`) | Upload up to 20 files into one slot → 202 with one record per file, in request order: `pending` + `job_id` for queued files, `failed` + `error` for files rejected up front (type, size, empty). |
+| `GET` | `/projects/{id}/documents?slot=&status=` | The project's records. |
+| `GET` | `/projects/{id}/documents/{doc}` | One record — poll for `status`. |
+| `DELETE` | `/projects/{id}/documents/{doc}` | Remove the record and its object → 204. |
+| `GET` | `/documents/{doc}/page/{n}` | Rendered PDF page (S5 source view), served from the store. |
+
+The extraction worker moves a record `processing` → `complete` (with
+`page_count`) or `failed` (with the reason); the job's result carries the
+same `document_id`. Erasing a project deletes its objects and records. The
+single-file `/extract-quote` and `/extract-jobs` paths still work and now
+create the same records (already `complete`).
 
 ## Migration from the blob table
 

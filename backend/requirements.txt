@@ -19,3 +19,4 @@ sentry-sdk==2.69.1        # error tracking (DSN-gated; no-op when unset)
 PyJWT==2.10.1             # Supabase Auth bearer-token verification (HS256 / JWKS)
 SQLAlchemy==2.0.53          # relational project store (PostgreSQL in production)
 psycopg[binary]==3.3.5      # PostgreSQL driver for SQLAlchemy
+httpx==0.28.1               # Supabase Storage REST client

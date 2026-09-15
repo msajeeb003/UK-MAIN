@@ -26,6 +26,7 @@ from pydantic import BaseModel
 from app.api.routes import process_upload, validate_upload
 from app.core import db
 from app.core.auth import require_user
+from app.services import documents as docs
 from app.services.pipeline import EngineOverride, FileKind
 
 logger = logging.getLogger(__name__)
@@ -82,28 +83,61 @@ def _sweep_old_jobs() -> None:
 
 def _run_job(job_id: str, file_bytes: bytes, filename: str, file_kind: FileKind,
              engine: EngineOverride, project_id: str | None, doc_kind: str | None,
-             actor: str) -> None:
+             actor: str, document_id: str | None = None) -> None:
     """Worker-thread body: wait for a slot, run the shared upload pipeline,
-    record the outcome. Never raises — every failure lands in the row."""
+    record the outcome. Never raises — every failure lands in the row. When
+    the upload has a document record (multi-file uploads), the record
+    follows the job: processing → complete | failed."""
     with _slots:
         _set(job_id, status="processing", stage="extracting")
+        if document_id:
+            docs.set_status(document_id, "processing", stage="extracting")
         try:
             result = asyncio.run(process_upload(
                 file_bytes, filename, file_kind, engine,
                 project_id=project_id, doc_kind=doc_kind, actor=actor,
-                endpoint="/extract-jobs",
+                endpoint="/extract-jobs", document_id=document_id,
             ))
             _set(job_id, status="done", stage="done",
                  result=result.model_dump_json())
         except HTTPException as exc:
             _set(job_id, status="error", stage="failed",
                  error=str(exc.detail), error_status=exc.status_code)
+            if document_id:
+                docs.set_status(document_id, "failed", stage="failed", error=str(exc.detail))
         except Exception as exc:  # noqa: BLE001 — must never kill the thread silently
             logger.exception("Extraction job %s crashed", job_id)
-            _set(job_id, status="error", stage="failed",
-                 error="Extraction failed unexpectedly. Check the server logs.",
-                 error_status=502)
+            message = "Extraction failed unexpectedly. Check the server logs."
+            _set(job_id, status="error", stage="failed", error=message, error_status=502)
+            if document_id:
+                docs.set_status(document_id, "failed", stage="failed", error=message)
             del exc
+
+
+def create_job(*, project_id: str | None, doc_kind: str | None, filename: str,
+               actor: str) -> str:
+    """Record a queued job and return its id (nothing runs yet)."""
+    job_id = secrets.token_hex(12)
+    now = db.now()
+    _sweep_old_jobs()
+    db.execute(
+        "INSERT INTO extraction_jobs (id, project_id, kind, filename, status, stage, "
+        "actor, created, updated) VALUES (?,?,?,?,?,?,?,?,?)",
+        (job_id, project_id or "", doc_kind or "quote", filename, "queued", "queued",
+         actor, now, now),
+    )
+    return job_id
+
+
+def start_job(job_id: str, file_bytes: bytes, filename: str, file_kind: FileKind,
+              engine: EngineOverride, *, project_id: str | None, doc_kind: str | None,
+              actor: str, document_id: str | None = None) -> None:
+    """Run a recorded job on a worker thread."""
+    threading.Thread(
+        target=_run_job, name=f"extract-{job_id}", daemon=True,
+        args=(job_id, file_bytes, filename, file_kind, engine, project_id,
+              doc_kind, actor, document_id),
+    ).start()
 
 
 @router.post("/extract-jobs", response_model=JobView, status_code=202)
@@ -116,20 +150,10 @@ async def start_extraction_job(
 ) -> JobView:
     """Validate the upload, queue it and return the job to poll."""
     filename, file_kind, file_bytes = await validate_upload(file)
-    job_id = secrets.token_hex(12)
-    now = db.now()
-    _sweep_old_jobs()
-    db.execute(
-        "INSERT INTO extraction_jobs (id, project_id, kind, filename, status, stage, "
-        "actor, created, updated) VALUES (?,?,?,?,?,?,?,?,?)",
-        (job_id, project_id or "", doc_kind or "quote", filename, "queued", "queued",
-         user["email"], now, now),
-    )
-    threading.Thread(
-        target=_run_job, name=f"extract-{job_id}", daemon=True,
-        args=(job_id, file_bytes, filename, file_kind, engine, project_id,
-              doc_kind, user["email"]),
-    ).start()
+    job_id = create_job(project_id=project_id, doc_kind=doc_kind, filename=filename,
+                        actor=user["email"])
+    start_job(job_id, file_bytes, filename, file_kind, engine, project_id=project_id,
+              doc_kind=doc_kind, actor=user["email"])
     row = db.query_one("SELECT * FROM extraction_jobs WHERE id=?", (job_id,))
     return _row_to_view(row)
 

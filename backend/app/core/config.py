@@ -87,6 +87,11 @@ class Settings(BaseSettings):
     supabase_url: str = ""
     supabase_jwt_secret: SecretStr = SecretStr("")
     supabase_jwt_audience: str = "authenticated"
+    # Supabase Storage for retained documents (docs/DATABASE.md): the
+    # service-role key is server-side only and never reaches the browser.
+    # Empty = local files under DATA_DIR (development/tests).
+    supabase_service_role_key: SecretStr = SecretStr("")
+    supabase_storage_bucket: str = "documents"
     # Data retention (BRD 2.11): hard-delete projects untouched for longer
     # than this many days. 0 = disabled (keep forever) — the period is the
     # client's decision, so nothing is deleted until they set it.
@@ -189,6 +194,10 @@ class Settings(BaseSettings):
         if scheme.lower() in ("postgres", "postgresql"):
             return "postgresql+psycopg://" + rest
         return url
+
+    @property
+    def supabase_storage_enabled(self) -> bool:
+        return bool(self.supabase_url and self.supabase_service_role_key.get_secret_value())
 
     @property
     def supabase_auth_enabled(self) -> bool:

@@ -22,13 +22,17 @@ model is dialect-neutral so both behave identically.
 
 from datetime import UTC, datetime
 
-from sqlalchemy import DateTime, ForeignKey, Index, Integer, String
+from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy.types import JSON
 
 PROJECT_TYPES = ("new", "renewal")
 PROJECT_STATUSES = ("draft", "ready", "sent", "closed")
+# Upload slots (BRD S4): insurer quotes, the expiring policy, credit-limit
+# schedules. Per-file processing status of an upload.
+DOCUMENT_SLOTS = ("quote", "expiring", "limits")
+DOCUMENT_STATUSES = ("pending", "processing", "complete", "failed")
 
 JSONDocument = JSON().with_variant(JSONB(), "postgresql")
 
@@ -93,3 +97,38 @@ class ProjectInsurer(Base):
     project: Mapped[Project] = relationship(back_populates="insurers")
 
     __table_args__ = (Index("ix_project_insurers_insurer_id", "insurer_id"),)
+
+
+class Document(Base):
+    """One uploaded file: which slot it fills, where its bytes live (object
+    store key) and how far processing has got."""
+
+    __tablename__ = "documents"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    project_id: Mapped[str] = mapped_column(
+        String(64), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False,
+    )
+    slot: Mapped[str] = mapped_column(String(16), nullable=False)
+    filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    content_type: Mapped[str] = mapped_column(String(100), nullable=False, default="application/octet-stream")
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # "supabase" | "local" and the key within it ("" when nothing was stored,
+    # e.g. a rejected upload that is kept only as a failed record).
+    storage_backend: Mapped[str] = mapped_column(String(16), nullable=False, default="local")
+    storage_key: Mapped[str] = mapped_column(String(512), nullable=False, default="")
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="pending")
+    stage: Mapped[str] = mapped_column(String(40), nullable=False, default="queued")
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    page_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # The extraction job processing this file (app/api/jobs.py), while any.
+    job_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    uploaded_by: Mapped[str] = mapped_column(String(320), nullable=False, default="")
+    uploaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
+    processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        Index("ix_documents_project_id", "project_id"),
+        Index("ix_documents_status", "status"),
+    )

@@ -150,6 +150,11 @@ file under `DATA_DIR` for development and tests.
 | `GET` `PUT` `PATCH` `DELETE` | `/projects/{id}` | detail · replace-or-create · partial update · erase (204) |
 | `GET` `PUT` | `/projects/{id}/insurers` | the approached list · replace it in order |
 | `POST` `DELETE` | `/projects/{id}/insurers/{insurer_id}` | add one · remove one |
+| `POST` | `/projects/{id}/documents` (`files[]`, `slot`) | multi-file upload into a slot → 202, one record per file with `status` pending/processing/complete/failed |
+| `GET` `DELETE` | `/projects/{id}/documents[/{doc}]` | list / poll a record · remove it and its stored file |
+
+Uploaded files live in **Supabase Storage** (`SUPABASE_SERVICE_ROLE_KEY`,
+`SUPABASE_STORAGE_BUCKET`; local files under `DATA_DIR` when unset).
 
 ## Extraction rules
 

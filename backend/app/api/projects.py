@@ -7,6 +7,7 @@ The broker's working document travels as `state` — the server stores it
 verbatim and never edits it. No versioning in this build.
 """
 
+import logging
 import re
 import shutil
 from typing import Annotated
@@ -30,6 +31,8 @@ from app.models.projects import (
     SortKey,
 )
 from app.services import projects as repo
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(dependencies=[Depends(require_user)])
 
@@ -140,16 +143,26 @@ def update_project(project_id: str, body: ProjectPatch, session: Db, user: User)
 
 
 def delete_project_data(project_id: str) -> None:
-    """Erase a project everywhere in live storage: the relational row (its
-    insurer links cascade), the SQLite rows (documents, exports, metrics,
-    legacy blob), then its files. Reused by the on-request delete and the
+    """Erase a project everywhere in live storage: the relational rows (its
+    insurer links and document records cascade), the stored objects, the
+    SQLite rows (legacy documents, exports, metrics, legacy blob), then its
+    files. Reused by the on-request delete and the
     scheduled retention purge. Idempotent — safe to call for an
     already-deleted project. Files go LAST (a filesystem delete cannot be
     rolled back, so the recoverable DB deletes commit first)."""
     from app.db.engine import session_scope
+    from app.services import documents as docs
+    from app.storage import StorageError, get_store
 
     with session_scope() as session:
-        repo.delete(session, project_id)
+        keys = docs.storage_keys_for_project(session, project_id)
+        repo.delete(session, project_id)          # document records cascade
+    store = get_store()
+    for key in keys:
+        try:
+            store.delete(key)
+        except StorageError as exc:
+            logger.warning("Object %s left behind after erasure of %s: %s", key, project_id, exc)
     db.execute_transaction([
         ("DELETE FROM documents WHERE project_id=?", (project_id,)),
         ("DELETE FROM exports WHERE project_id=?", (project_id,)),
@@ -274,31 +287,4 @@ def export_pdf_page(project_id: str, page: int) -> Response:
         doc.close()
     return Response(content=png, media_type="image/png",
                     headers={"Cache-Control": "private, no-store",
-                             "X-Page-Count": str(page_count)})
-
-
-@router.get("/documents/{document_id}/page/{page}")
-def document_page(document_id: str, page: int) -> Response:
-    """One page of a retained PDF as an image — S5: clicking a value opens
-    the source page. Excel documents have no page image (404)."""
-    row = db.query_one(
-        "SELECT stored_path FROM documents WHERE id=?", (document_id,)
-    )
-    if row is None:
-        raise HTTPException(status_code=404, detail="Document not found.")
-    try:
-        doc = pymupdf.open(row["stored_path"])
-    except Exception as exc:
-        raise HTTPException(status_code=404, detail="Not a renderable PDF.") from exc
-    try:
-        if not 1 <= page <= doc.page_count:
-            raise HTTPException(status_code=404, detail="Page out of range.")
-        pix = doc[page - 1].get_pixmap(dpi=120)
-        png = pix.tobytes("png")
-        page_count = doc.page_count
-    finally:
-        doc.close()
-    # X-Page-Count lets the viewer offer prev/next without a second request.
-    return Response(content=png, media_type="image/png",
-                    headers={"Cache-Control": "private, max-age=3600",
                              "X-Page-Count": str(page_count)})

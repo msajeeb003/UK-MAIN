@@ -72,6 +72,11 @@ def run_startup_checks() -> None:
         # attacker serve keys of their choosing.
         if s.supabase_url and not s.supabase_url.startswith("https://"):
             fatal.append("SUPABASE_URL must use https in production.")
+        if not s.supabase_storage_enabled:
+            fatal.append(
+                "SUPABASE_SERVICE_ROLE_KEY (with SUPABASE_URL) is required in production: "
+                "uploaded documents are kept in Supabase Storage (docs/DATABASE.md)."
+            )
         if not s.database_url_effective.startswith("postgresql"):
             fatal.append(
                 "DATABASE_URL must point at PostgreSQL in production (the SQLite "

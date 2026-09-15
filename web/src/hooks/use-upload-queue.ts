@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { useProject } from "@/hooks/use-project";
-import { ApiError, errorMessage, extractionApi, type DocKind, type ExtractJob } from "@/lib/api";
+import { ApiError, documentsApi, errorMessage, extractionApi, type DocKind, type DocumentRecord, type ExtractJob } from "@/lib/api";
 import {
   addFileEntry,
   applyExtraction,
@@ -175,35 +175,59 @@ export function useUploadQueue(): UploadQueue {
     };
   }, []);
 
-  const uploadOne = useCallback(
-    async (kind: DocKind, file: File) => {
-      let created: ProjectFile | null = null;
-      const withEntry = await update((p) => {
-        const { project: next, entry } = addFileEntry(p as UploadProjectState, kind, file);
-        created = entry;
-        return next;
-      });
-      const entry = created as ProjectFile | null;
-      if (!entry) return;
+  /**
+   * One request for the whole batch (POST /projects/{id}/documents): each
+   * file gets a list entry first so the cards show at once and survive a
+   * reload, then the server's per-file records decide what happens next —
+   * poll the job for accepted files, flag rejected ones.
+   */
+  const uploadBatch = useCallback(
+    async (kind: DocKind, files: File[]) => {
+      const entries: ProjectFile[] = [];
+      let projectId = "";
+      for (const file of files) {
+        const withEntry = await update((p) => {
+          const { project: next, entry } = addFileEntry(p as UploadProjectState, kind, file);
+          entries.push(entry);
+          return next;
+        });
+        projectId = withEntry.id;
+      }
+      let records: DocumentRecord[];
       try {
-        const job = await extractionApi.startJob({ file, projectId: withEntry.id, docKind: kind });
+        records = await documentsApi.upload(projectId, kind, files);
+      } catch (err) {
+        // 401/403 already routed to the login page by the API client; the
+        // documents are fine, so drop the cards instead of flagging them.
+        if (err instanceof ApiError && err.isUnauthorized) {
+          for (const entry of entries) {
+            await update((p) => removeFileEntry(p as UploadProjectState, entry.id)).catch(() => undefined);
+          }
+          return;
+        }
+        const message = errorMessage(err, "upload failed");
+        for (const entry of entries) await finishError(entry, message);
+        return;
+      }
+      for (const [i, entry] of entries.entries()) {
+        const record = records[i];
+        if (!record || record.status === "failed" || !record.job_id) {
+          const reason = record?.error || "rejected by the server";
+          await finishError(entry, reason);
+          toast.error(`${entry.name}: ${reason}`);
+          continue;
+        }
+        const processing = record.status === "processing";
         await update((p) =>
           updateFileEntry(p as UploadProjectState, entry.id, {
-            status: job.status === "processing" ? "processing" : "queued",
-            meta: `${kindLabel(kind)} · ${stageLabel(job)}`,
-            jobId: job.job_id,
+            status: processing ? "processing" : "queued",
+            meta: `${kindLabel(kind)} · ${processing ? "processing · reading and extracting" : "queued · waiting for a slot"}`,
+            jobId: record.job_id,
+            docId: record.id,
             progress: undefined,
           }),
         );
-        pollJob(entry, job.job_id);
-      } catch (err) {
-        // 401/403 already routed to the login page by the API client; the
-        // document is fine, so drop the card instead of flagging it.
-        if (err instanceof ApiError && err.isUnauthorized) {
-          await update((p) => removeFileEntry(p as UploadProjectState, entry.id)).catch(() => undefined);
-          return;
-        }
-        await finishError(entry, errorMessage(err, "upload failed"));
+        pollJob(entry, record.job_id);
       }
     },
     [finishError, pollJob, update],
@@ -220,18 +244,28 @@ export function useUploadQueue(): UploadQueue {
         });
       }
       if (plan.retried.length) toast.info(`Retrying ${plan.retried.join(", ")}`);
-      // Uploads run in parallel; the backend queues the extractions.
-      await Promise.all(plan.accepted.map((file) => uploadOne(kind, file)));
+      // One multipart request for the batch; the backend queues the extractions.
+      if (plan.accepted.length) await uploadBatch(kind, plan.accepted);
     },
-    [project, uploadOne],
+    [project, uploadBatch],
   );
 
   const remove = useCallback(
     async (entry: ProjectFile) => {
       if (isInFlight(entry)) return;
+      if (entry.docId && project) {
+        try {
+          await documentsApi.remove(project.id, entry.docId);
+        } catch (err) {
+          if (!(err instanceof ApiError && err.status === 404)) {
+            toast.error(errorMessage(err, "Could not remove the document"));
+            return;
+          }
+        }
+      }
       await update((p) => removeFileEntry(p as UploadProjectState, entry.id));
     },
-    [update],
+    [project, update],
   );
 
   return { enqueue, remove, polling };

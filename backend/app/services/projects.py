@@ -152,6 +152,15 @@ def create(session: Session, data: dict, actor: str, project_id: str | None = No
     return project
 
 
+def ensure(session: Session, project_id: str, actor: str) -> Project:
+    """The row a legacy upload path refers to — created as an empty draft
+    when absent (the classic SPA saves the project in a separate request)."""
+    project = get(session, project_id)
+    if project is None:
+        project = create(session, {}, actor, project_id=project_id)
+    return project
+
+
 def upsert(session: Session, project_id: str, data: dict, actor: str) -> tuple[Project, bool]:
     """PUT semantics: create the resource at this id, or replace it whole.
     Returns (project, created)."""

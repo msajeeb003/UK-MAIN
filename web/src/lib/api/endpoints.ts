@@ -6,6 +6,8 @@ import { buildUrl, http, requestBlob } from "./client";
 import type {
   ClientErrorReport,
   DocKind,
+  DocumentBatch,
+  DocumentRecord,
   DownloadedFile,
   ExportFormat,
   ExtractJob,
@@ -154,6 +156,37 @@ export const projectsApi = {
 
 // ── /documents ──────────────────────────────────────────────────────────
 export const documentsApi = {
+  /**
+   * Upload one or more files into a slot (HTTP 202). Every file comes back
+   * as a record in request order: `pending` with a `job_id` to poll, or
+   * `failed` with the reason when it was rejected up front.
+   */
+  async upload(projectId: string, slot: DocKind, files: File[], signal?: AbortSignal): Promise<DocumentRecord[]> {
+    const formData = new FormData();
+    for (const file of files) formData.append("files", file);
+    formData.append("slot", slot);
+    const res = await http.post<DocumentBatch>(`/projects/${encodeURIComponent(projectId)}/documents`, undefined, {
+      formData,
+      signal,
+      timeoutMs: 5 * 60_000,
+    });
+    return res.documents;
+  },
+
+  /** The project's document records (optionally one slot). */
+  list: (projectId: string, slot?: DocKind) =>
+    http
+      .get<DocumentBatch>(`/projects/${encodeURIComponent(projectId)}/documents`, { query: { slot } })
+      .then((r) => r.documents),
+
+  /** One record — poll it for the processing status. */
+  get: (projectId: string, documentId: string, signal?: AbortSignal) =>
+    http.get<DocumentRecord>(`/projects/${encodeURIComponent(projectId)}/documents/${encodeURIComponent(documentId)}`, { signal }),
+
+  /** Remove the record and its stored file. */
+  remove: (projectId: string, documentId: string) =>
+    http.delete<void>(`/projects/${encodeURIComponent(projectId)}/documents/${encodeURIComponent(documentId)}`),
+
   /** Rendered page image of a retained document (source-page chips). */
   pageImageUrl: (documentId: string, page: number) =>
     buildUrl(`/documents/${encodeURIComponent(documentId)}/page/${page}`),

@@ -8,8 +8,6 @@ the server log only, never to the client.
 """
 
 import logging
-import re
-import secrets
 import time
 from typing import Annotated, Literal
 
@@ -30,8 +28,12 @@ from app.core import observability as obs
 from app.core.auth import require_user
 from app.core.config import get_settings
 from app.core.errors import PipelineError
+from app.db.engine import session_scope
+from app.db.models import DOCUMENT_SLOTS
 from app.models.presentation import PresentationRequest
 from app.models.schemas import ExtractionResponse
+from app.services import documents as docs
+from app.services import projects as projects_repo
 from app.services.library import get_insurers
 from app.services.pipeline import EngineOverride, FileKind, run_extraction_pipeline
 from app.services.presentation import (
@@ -40,6 +42,7 @@ from app.services.presentation import (
     build_pptx,
     suggested_filename,
 )
+from app.storage import StorageError, get_store
 
 logger = logging.getLogger(__name__)
 
@@ -107,19 +110,26 @@ _EXPORT_BUILDERS = {
 
 
 def _store_document(project_id: str, kind: str, filename: str,
-                    file_bytes: bytes, page_count: int) -> str:
-    """Retain the uploaded document against the project (BRD S4/2.9)."""
-    doc_id = secrets.token_hex(12)
-    safe = re.sub(r"[^\w.\- ]", "_", filename)[-80:]
-    folder = get_settings().data_path / "projects" / project_id / "docs"
-    folder.mkdir(parents=True, exist_ok=True)
-    path = folder / f"{doc_id}_{safe}"
-    path.write_bytes(file_bytes)
-    db.execute(
-        "INSERT INTO documents (id, project_id, kind, filename, stored_path, "
-        "page_count, uploaded) VALUES (?,?,?,?,?,?,?)",
-        (doc_id, project_id, kind, filename, str(path), page_count, db.now()),
-    )
+                    file_bytes: bytes, page_count: int, actor: str) -> str:
+    """Retain a document that was extracted without an up-front record
+    (the synchronous /extract-quote and the single-file /extract-jobs
+    paths): store the bytes and create its record already `complete`.
+    Multi-file uploads create the record first (app/api/documents.py)."""
+    doc_id = docs.new_id()
+    key = docs.object_key(project_id, doc_id, filename)
+    store = get_store()
+    store.put(key, file_bytes, docs.content_type_for(filename))
+    with session_scope() as session:
+        # The classic SPA saves the project separately; make sure the row the
+        # record points at exists (an empty draft if it does not yet).
+        projects_repo.ensure(session, project_id, actor)
+        docs.create(
+            session, document_id=doc_id, project_id=project_id,
+            slot=kind if kind in DOCUMENT_SLOTS else "quote", filename=filename,
+            content_type=docs.content_type_for(filename), size_bytes=len(file_bytes),
+            storage_backend=store.backend, storage_key=key, actor=actor,
+            status="complete", stage="done", page_count=page_count,
+        )
     return doc_id
 
 
@@ -295,7 +305,7 @@ async def validate_upload(file: UploadFile) -> tuple[str, FileKind, bytes]:
 async def process_upload(
     file_bytes: bytes, filename: str, file_kind: FileKind, engine: EngineOverride,
     *, project_id: str | None, doc_kind: str | None, actor: str,
-    endpoint: str = "/extract-quote",
+    endpoint: str = "/extract-quote", document_id: str | None = None,
 ) -> ExtractionResponse:
     """Run the pipeline on a validated upload, retain the document against
     the project and record the audit/metrics events. Shared by the
@@ -306,11 +316,18 @@ async def process_upload(
     started = time.monotonic()
     try:
         result = await run_extraction_pipeline(file_bytes, filename, engine, file_kind)
-        if project_id:
+        if project_id and document_id:
+            # Multi-file upload: the record and the stored object already
+            # exist; mark it complete with what the pipeline learned.
+            docs.set_status(document_id, "complete", stage="done",
+                            page_count=result.meta.page_count)
+            result.meta.document_id = document_id
+        elif project_id:
             result.meta.document_id = _store_document(
                 project_id, doc_kind or "quote", filename,
-                file_bytes, result.meta.page_count,
+                file_bytes, result.meta.page_count, actor,
             )
+        if project_id:
             audit.record("document.upload", target=result.meta.document_id,
                          actor=actor, project_id=project_id,
                          kind=doc_kind or "quote", filename=filename,
@@ -323,6 +340,12 @@ async def process_upload(
                       pages=result.meta.page_count,
                       duration_ms=int((time.monotonic() - started) * 1000))
         return result
+    except StorageError as exc:
+        obs.log_event("extraction_failed", kind=file_kind, reason="StorageError")
+        logger.error("Document storage failed for %s: %s", filename, exc)
+        raise HTTPException(
+            status_code=503, detail="Could not store the document — try again.",
+        ) from exc
     except PipelineError as exc:
         # Expected/handled failure (bad file, no creds) — client-safe message.
         obs.log_event("extraction_failed", kind=file_kind, reason=type(exc).__name__)
