@@ -55,6 +55,9 @@ export function ProjectProvider({ projectId, children }: { projectId: string; ch
           setStatus("missing");
           return;
         }
+        // A background refresh that fails keeps the copy already on screen;
+        // only the first load surfaces the error state.
+        if (latest.current) return;
         setError(errorMessage(err, "Could not load the project"));
         setStatus("error");
       },
@@ -64,8 +67,14 @@ export function ProjectProvider({ projectId, children }: { projectId: string; ch
     };
   }, [projectId, attempt]);
 
+  /**
+   * Fetch the latest server copy. While a project is already on screen this
+   * is a silent refresh — the screen keeps rendering the current copy and
+   * swaps in the new one when it arrives (the upload screen refreshes on
+   * every processing step, and must not flash its loading state each time).
+   */
   const reload = useCallback(() => {
-    setStatus("loading");
+    if (!latest.current) setStatus("loading");
     setError(null);
     setAttempt((n) => n + 1);
   }, []);
