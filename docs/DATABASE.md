@@ -47,9 +47,49 @@ set `TEST_DATABASE_URL` only to run it against a throwaway database.
   `timings` (per-step ms/outcome of the last run), `job_id`, `uploaded_by`,
   `uploaded_at`, `updated_at`, `processed_at`.
 
-The schema is created with `metadata.create_all` at start-up (idempotent).
-Schema *changes* should be shipped as Alembic migrations once the first
-production database exists; none are needed for the initial version.
+- **exports** — the latest generated file per project and format (BRD 2.8 /
+  S2 download links): `(project_id → projects.id ON DELETE CASCADE, format)`
+  (`pptx` | `pdf` | `limits-xlsx`), `filename`, `content_type`, `size_bytes`,
+  `storage_backend` + `storage_key` (the object, see below), `generated_by`,
+  `created_at`. Regenerating replaces the row and the object — no versioning.
+
+## Migrations (Alembic, `backend/migrations`)
+
+Schema changes ship as versioned Alembic revisions. The container
+entrypoint runs `alembic upgrade head` before the API starts whenever
+`DATABASE_URL` is PostgreSQL; `metadata.create_all` at start-up remains
+for the SQLite development store (and is a no-op on a migrated database).
+
+```bash
+python -m alembic -c backend/alembic.ini upgrade head   # apply (reads DATABASE_URL)
+python -m alembic -c backend/alembic.ini current        # what is applied
+python -m alembic -c backend/alembic.ini revision -m "add x"   # new revision
+```
+
+| Revision | What it does |
+|---|---|
+| `0001_baseline` | The five tables above. Adopts a database `create_all` already built (each table is created only when missing), so the first upgrade on the existing production database records the revision without touching data. Frozen — later changes are new revisions. |
+| `0002_check_constraints` | The value sets as CHECK constraints: `projects.project_type`, `projects.status`, `documents.slot`, `documents.status`, `*.storage_backend`, `exports.format`, `project_insurers.position >= 0`. CHECKs rather than PostgreSQL enum types: no column type change on a live table, and SQLite gets the same rule. |
+| `0003_row_level_security` | PostgreSQL only. Enables RLS on every table and adds the policies below. |
+
+### Row-level security
+
+Supabase exposes `public` tables through PostgREST and grants the `anon`
+and `authenticated` roles access by default, so without RLS the
+publishable key in the browser could read projects. After `0003`:
+
+- `anon` sees nothing (RLS on, no policy);
+- `authenticated` — every signed-in internal user (BRD 2.10: identical
+  permissions, all users see all projects) — may read and write
+  `projects`, `project_insurers`, `documents` and `exports`;
+- `config_documents` is readable by every internal user and writable only
+  when the token's `app_metadata.role` is `admin` (the same rule as the
+  API's `require_admin`).
+
+The API connects as the table owner (`postgres` via the pooler), which
+bypasses RLS — the policies are a second line of defence for direct
+database access, not the API's access control. Sign-ups must stay
+disabled in Supabase Auth so "authenticated" means "provisioned".
 
 ## API (`app/api/projects.py`, all behind `require_user`)
 
@@ -80,7 +120,12 @@ the browser). The record in `documents` tracks each file's processing.
 | `SUPABASE_STORAGE_BUCKET` | Bucket name, default `documents`. Create it as **private**. |
 | *(key empty)* | Development / tests: objects are files under `DATA_DIR/projects/<id>/docs/`. |
 
-Object keys are `projects/<project_id>/docs/<document_id>_<safe filename>`.
+Object keys are `projects/<project_id>/docs/<document_id>_<safe filename>`
+for uploads and `projects/<project_id>/exports/<format>.<ext>` for generated
+files (PRD: Supabase Storage holds the original PDFs and the generated
+presentations). `GET /projects/{id}/exports/{format}` and the S8 page
+preview read from the store; exports made before the `exports` table
+existed (a SQLite row + a file under `DATA_DIR`) still download.
 
 | Method | Path | Purpose |
 |---|---|---|

@@ -14,8 +14,10 @@ client presentation.
 - **Backend** — FastAPI pipeline: PyMuPDF (digital PDFs) / Azure Document
   Intelligence or open-source Docling OCR (scanned PDFs) → LLM Structured
   Outputs (Claude or OpenAI) → normalized, source-linked JSON. Every value
-  carries the PDF page it came from; missing values stay `null` — the
-  system never guesses.
+  carries the PDF page it came from (and its page position); missing values
+  stay `null` — the system never guesses. The presentation is built with
+  python-pptx and converted to PDF by LibreOffice headless; files and
+  records live in Supabase Storage / PostgreSQL (Alembic migrations).
 - **Frontend** — wireframe-faithful broker flow served at `/`:
   Login → Projects → Setup → Upload → Review & edit → Buyer credit limits →
   Recommendation → Generate & export.

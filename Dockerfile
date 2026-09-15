@@ -13,7 +13,13 @@ FROM python:3.12-slim
 
 # Patch base-image OS packages so the image ships without known fixable
 # HIGH/CRITICAL CVEs (enforced by the Trivy scan in CI).
-RUN apt-get update && apt-get upgrade -y && rm -rf /var/lib/apt/lists/* \
+# LibreOffice (Impress only) converts the generated PowerPoint to the PDF the
+# broker downloads (app/services/pdf_convert.py); Carlito/Liberation are the
+# metric-compatible substitutes for the deck's Calibri/Arial theme fonts.
+RUN apt-get update && apt-get upgrade -y \
+    && apt-get install -y --no-install-recommends \
+         libreoffice-impress fonts-crosextra-carlito fonts-liberation fonts-dejavu-core \
+    && rm -rf /var/lib/apt/lists/* \
     && groupadd --system app && useradd --system --gid app --home-dir /srv --shell /usr/sbin/nologin app
 
 WORKDIR /srv

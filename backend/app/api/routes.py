@@ -23,7 +23,7 @@ from fastapi import (
 )
 
 from app.api.observability import record_generation
-from app.core import audit, db
+from app.core import audit
 from app.core import observability as obs
 from app.core.auth import require_user
 from app.core.config import get_settings
@@ -34,12 +34,13 @@ from app.models.presentation import PresentationRequest
 from app.models.schemas import ExtractionResponse
 from app.services import apply
 from app.services import documents as docs
+from app.services import exports as exports_svc
 from app.services import projects as projects_repo
 from app.services.library import active_insurers
+from app.services.pdf_convert import converter_in_use, render_pdf
 from app.services.pipeline import EngineOverride, FileKind, StepRecorder, run_extraction_pipeline
 from app.services.presentation import (
     build_limits_xlsx,
-    build_pdf,
     build_pptx,
     suggested_filename,
 )
@@ -73,6 +74,7 @@ async def health() -> dict:
         "openai_configured": bool(settings.openai_api_key.get_secret_value()),
         "anthropic_configured": bool(settings.anthropic_api_key.get_secret_value()),
         "azure_configured": azure,
+        "pdf_converter": converter_in_use(),  # "libreoffice" | "pymupdf"
         "docling_installed": docling,
         "scanned_pdf_engine": "azure" if azure else ("docling" if docling else "none"),
     }
@@ -103,7 +105,9 @@ _EXPORT_BUILDERS = {
         build_pptx, "pptx",
         "application/vnd.openxmlformats-officedocument.presentationml.presentation",
     ),
-    "pdf": (build_pdf, "pdf", "application/pdf"),
+    # The PDF is converted from the same PPTX (LibreOffice headless), see
+    # app/services/pdf_convert.py.
+    "pdf": (render_pdf, "pdf", "application/pdf"),
     "limits-xlsx": (
         build_limits_xlsx, "xlsx",
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -151,20 +155,21 @@ def _persist_document(project_id: str, document_id: str, filename: str, slot: st
 
 
 def _store_export(project_id: str, format: str, filename: str,
-                  content: bytes, extension: str) -> None:
-    """Keep the latest export downloadable from the project list (BRD S2).
-    Regenerating replaces the previous file — no versioning (BRD 2.8)."""
-    folder = get_settings().data_path / "projects" / project_id / "exports"
-    folder.mkdir(parents=True, exist_ok=True)
-    path = folder / f"{format}.{extension}"
-    path.write_bytes(content)
-    db.execute(
-        "INSERT INTO exports (project_id, format, filename, stored_path, created) "
-        "VALUES (?,?,?,?,?) ON CONFLICT(project_id, format) DO UPDATE SET "
-        "filename=excluded.filename, stored_path=excluded.stored_path, "
-        "created=excluded.created",
-        (project_id, format, filename, str(path), db.now()),
-    )
+                  content: bytes, extension: str, actor: str = "") -> None:
+    """Keep the latest export downloadable from the project list (BRD S2):
+    the bytes go to the object store (Supabase Storage in production) and
+    the record to the relational `exports` table. Regenerating replaces
+    the previous file — no versioning (BRD 2.8)."""
+    del extension  # implied by the format (app/services/exports.py)
+    try:
+        exports_svc.store(project_id, format, filename, content, actor)
+    except StorageError as exc:
+        logger.error("Export of %s for %s could not be stored: %s", format, project_id, exc)
+        raise HTTPException(
+            status_code=502,
+            detail=("The presentation was generated but could not be stored "
+                    "against the project. Try again."),
+        ) from exc
 
 
 @router.post("/generate-presentation")
@@ -223,7 +228,7 @@ async def generate_presentation(
                  recommended=request.recommended_id,
                  confirmed=len(request.confirmed_fields), columns=len(request.columns))
     if project_id:
-        _store_export(project_id, format, filename, content, extension)
+        _store_export(project_id, format, filename, content, extension, actor=user["email"])
         # One metrics row per generation event (pptx = the primary deliverable,
         # so pdf/xlsx of the same project don't double-count).
         if format == "pptx":

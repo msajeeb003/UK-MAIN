@@ -1,7 +1,7 @@
 """
 Relational schema for project management (SQLAlchemy 2.0, PostgreSQL).
 
-Two tables:
+Tables:
 
 - `projects` — one row per client comparison. The searchable, filterable
   facts (client, reference, type, status, timestamps) are real columns; the
@@ -14,6 +14,19 @@ Two tables:
   Insurer ids are validated against config/insurers.json on write (the
   list is configuration, not code, so there is no `insurers` table to
   reference); the join rows cascade with their project.
+- `documents` — one row per uploaded file and its processing status; the
+  bytes are objects in Supabase Storage (BRD S4 / 2.9).
+- `exports` — the latest generated PowerPoint / PDF / credit-limit workbook
+  per project (BRD 2.8 / S2), also stored as objects. Regenerating
+  replaces the row and the object — no versioning in this build.
+- `config_documents` — the admin-maintained insurer list and terminology
+  map, versioned on every save (BRD 2.3 / 2.4).
+
+Value sets (`PROJECT_TYPES`, `PROJECT_STATUSES`, `DOCUMENT_SLOTS`,
+`DOCUMENT_STATUSES`, `EXPORT_FORMATS`) are plain strings validated here
+and enforced in PostgreSQL by CHECK constraints (backend/migrations),
+not enum types — no column type change on a live database, and the
+SQLite development store behaves the same.
 
 `DATABASE_URL` selects the engine (see app/db/engine.py): PostgreSQL in
 production, a local SQLite file for development and the test suite. The
@@ -33,6 +46,9 @@ PROJECT_STATUSES = ("draft", "ready", "sent", "closed")
 # schedules. Per-file processing status of an upload.
 DOCUMENT_SLOTS = ("quote", "expiring", "limits")
 DOCUMENT_STATUSES = ("uploaded", "processing", "ready", "unreadable")
+# Generated files kept per project (BRD 2.8): the deck, its PDF, the limits workbook.
+EXPORT_FORMATS = ("pptx", "pdf", "limits-xlsx")
+STORAGE_BACKENDS = ("local", "supabase")
 
 JSONDocument = JSON().with_variant(JSONB(), "postgresql")
 
@@ -137,6 +153,27 @@ class Document(Base):
         Index("ix_documents_project_id", "project_id"),
         Index("ix_documents_status", "status"),
     )
+
+
+class Export(Base):
+    """The latest generated file of one format for a project (BRD 2.8 / S2
+    download links). Bytes live in the object store under `storage_key`
+    (`projects/<id>/exports/<format>.<ext>`); regenerating overwrites both
+    the object and this row."""
+
+    __tablename__ = "exports"
+
+    project_id: Mapped[str] = mapped_column(
+        String(64), ForeignKey("projects.id", ondelete="CASCADE"), primary_key=True,
+    )
+    format: Mapped[str] = mapped_column(String(16), primary_key=True)
+    filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    content_type: Mapped[str] = mapped_column(String(100), nullable=False, default="application/octet-stream")
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    storage_backend: Mapped[str] = mapped_column(String(16), nullable=False, default="local")
+    storage_key: Mapped[str] = mapped_column(String(512), nullable=False)
+    generated_by: Mapped[str] = mapped_column(String(320), nullable=False, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
 
 
 class ConfigDocument(Base):

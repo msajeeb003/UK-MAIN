@@ -1,6 +1,6 @@
 """Pipeline internals: text extraction shape and the source-link sanitizer."""
 
-from app.extraction.base import clean_text, to_tagged_document
+from app.extraction.base import TextBlock, build_ocr_pages, clean_text, to_tagged_document
 from app.extraction.detector import open_pdf
 from app.extraction.pymupdf_extractor import extract_pages_pymupdf
 from app.services.pipeline import _build_review, _sanitize
@@ -21,6 +21,43 @@ def test_pymupdf_extraction_and_page_tags(digital_pdf):
     assert "=== PAGE 2 ===" in tagged
     # Page markers must precede their page's content.
     assert tagged.index("=== PAGE 1 ===") < tagged.index("Insurable Turnover")
+
+
+def test_pymupdf_pages_carry_block_positions(digital_pdf):
+    """PRD: PyMuPDF extracts text AND page positions — every block keeps its
+    bounding box (PDF points) and the boxes read top-to-bottom."""
+    doc = open_pdf(digital_pdf)
+    try:
+        page = extract_pages_pymupdf(doc)[0]
+        height = doc[0].rect.height
+    finally:
+        doc.close()
+    assert page.blocks and all(isinstance(b, TextBlock) for b in page.blocks)
+    turnover = next(b for b in page.blocks if "Insurable Turnover" in b.text)
+    assert 0 <= turnover.x0 < turnover.x1 and 0 <= turnover.y0 < turnover.y1 <= height
+    assert [b.y0 for b in page.blocks] == sorted(b.y0 for b in page.blocks)
+    assert "\n".join(b.text for b in page.blocks) == page.text
+
+
+def test_ocr_pages_keep_line_positions_in_points():
+    """The Azure engine feeds the same structure: line boxes are converted
+    from inches to PDF points so both engines agree on units."""
+    from app.extraction.azure_extractor import _line_block, _page_scale
+
+    class Page:
+        unit = "inch"
+
+    class Line:
+        content = "Indemnity 90%"
+        polygon = [1.0, 2.0, 3.0, 2.0, 3.0, 2.25, 1.0, 2.25]
+
+    block = _line_block(Line(), _page_scale(Page()))
+    assert block == TextBlock(72.0, 144.0, 216.0, 162.0, "Indemnity 90%")
+    assert _line_block(type("L", (), {"content": "x", "polygon": None})(), 72.0) is None
+
+    pages = build_ocr_pages({1: ["Indemnity 90%"]}, {}, {1: [block]})
+    assert pages[0].blocks == (block,)
+    assert build_ocr_pages({1: ["a"]}, {})[0].blocks == ()   # engines without positions
 
 
 def test_mojibake_text_layer_is_cleaned():

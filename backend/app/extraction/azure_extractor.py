@@ -15,7 +15,7 @@ from azure.core.credentials import AzureKeyCredential
 
 from app.core.config import get_settings
 from app.core.errors import ConfigurationError
-from app.extraction.base import PageText, build_ocr_pages
+from app.extraction.base import PageText, TextBlock, build_ocr_pages
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +49,25 @@ def _table_to_markdown(table) -> str:
     return "\n".join(lines)
 
 
+def _page_scale(di_page) -> float:
+    """Azure reports PDF pages in inches (images in pixels); positions are
+    kept in PDF points to match the PyMuPDF engine."""
+    return 72.0 if getattr(di_page, "unit", None) == "inch" else 1.0
+
+
+def _line_block(line, scale: float) -> TextBlock | None:
+    """A recognised line's bounding box (its polygon's extent) as a TextBlock."""
+    polygon = list(getattr(line, "polygon", None) or [])
+    if len(polygon) < 4:
+        return None
+    xs, ys = polygon[0::2], polygon[1::2]
+    return TextBlock(
+        round(min(xs) * scale, 1), round(min(ys) * scale, 1),
+        round(max(xs) * scale, 1), round(max(ys) * scale, 1),
+        (line.content or "").strip(),
+    )
+
+
 def extract_pages_azure(pdf_bytes: bytes) -> list[PageText]:
     """Blocking call (the poller waits for the Azure job) — the pipeline
     runs it in a worker thread."""
@@ -59,9 +78,14 @@ def extract_pages_azure(pdf_bytes: bytes) -> list[PageText]:
     result = poller.result()
 
     lines_by_page: dict[int, list[str]] = defaultdict(list)
+    blocks_by_page: dict[int, list[TextBlock]] = defaultdict(list)
     for di_page in result.pages or []:
+        scale = _page_scale(di_page)
         for line in di_page.lines or []:
             lines_by_page[di_page.page_number].append(line.content)
+            block = _line_block(line, scale)
+            if block is not None:
+                blocks_by_page[di_page.page_number].append(block)
 
     tables_by_page: dict[int, list[str]] = defaultdict(list)
     for table in result.tables or []:
@@ -69,7 +93,7 @@ def extract_pages_azure(pdf_bytes: bytes) -> list[PageText]:
             page_no = table.bounding_regions[0].page_number
             tables_by_page[page_no].append(_table_to_markdown(table))
 
-    pages = build_ocr_pages(lines_by_page, tables_by_page)
+    pages = build_ocr_pages(lines_by_page, tables_by_page, blocks_by_page)
     logger.info("Azure DI extracted %d pages, %d tables",
                 len(pages), len(result.tables or []))
     return pages

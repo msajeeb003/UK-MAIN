@@ -137,6 +137,14 @@ class Settings(BaseSettings):
     # /readyz alerts when free disk on DATA_DIR falls below this fraction.
     disk_free_min_ratio: float = 0.10
 
+    # ── PDF export (PRD: server-side PPTX → PDF converter) ──────────────
+    # "auto": LibreOffice when `soffice` is installed, else the built-in
+    # PyMuPDF renderer; "libreoffice": LibreOffice only (fatal in production
+    # when it is missing); "pymupdf": never call LibreOffice.
+    pdf_converter: Literal["auto", "libreoffice", "pymupdf"] = "auto"
+    soffice_path: str = "soffice"          # binary name or absolute path
+    soffice_timeout_seconds: int = 180
+
     # ── Guard rails ──────────────────────────────────────────────────────
     max_upload_mb: int = 25
     # Documents longer than this are rejected before any paid API call —

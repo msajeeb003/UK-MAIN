@@ -18,5 +18,6 @@ boto3==1.35.36            # S3-compatible offsite backup upload (lazy-imported)
 sentry-sdk==2.69.1        # error tracking (DSN-gated; no-op when unset)
 PyJWT==2.10.1             # Supabase Auth bearer-token verification (HS256 / JWKS)
 SQLAlchemy==2.0.53          # relational project store (PostgreSQL in production)
+alembic==1.18.4             # versioned schema migrations (backend/migrations)
 psycopg[binary]==3.3.5      # PostgreSQL driver for SQLAlchemy
 httpx==0.28.1               # Supabase Storage REST client

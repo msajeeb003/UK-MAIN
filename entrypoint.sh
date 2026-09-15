@@ -13,6 +13,15 @@ set -e
 
 python -m app.backup run --if-configured || echo "pre-start backup skipped/failed (see logs)"
 
+# Versioned schema migrations for the PostgreSQL project store (Alembic,
+# backend/migrations). The SQLite development fallback is created by the
+# app itself, so nothing runs without a PostgreSQL DATABASE_URL.
+case "${DATABASE_URL:-}" in
+  postgres*) echo "==> Applying database migrations"
+             python -m alembic -c backend/alembic.ini upgrade head ;;
+  *)         echo "==> No PostgreSQL DATABASE_URL — migrations skipped" ;;
+esac
+
 exec gunicorn app.main:app \
   -k uvicorn.workers.UvicornWorker \
   --workers "${WORKERS:-${WEB_CONCURRENCY:-2}}" \

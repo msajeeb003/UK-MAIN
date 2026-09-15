@@ -25,6 +25,10 @@ def _isolated_data_dir(tmp_path_factory):
     os.environ["DATA_DIR"] = str(tmp_path_factory.mktemp("data"))
     os.environ["DATABASE_URL"] = os.environ.get("TEST_DATABASE_URL", "")
     os.environ["SUPABASE_SERVICE_ROLE_KEY"] = ""
+    # The per-IP limit on the paid POST endpoints (30/min) would otherwise
+    # trip across a full run — every module shares the TestClient's address.
+    # The limiter's own tests set their limit explicitly.
+    os.environ["RATE_LIMIT_PER_MINUTE"] = "0"
     from app.core.config import get_settings
     get_settings.cache_clear()
     yield

@@ -103,6 +103,20 @@ def run_startup_checks() -> None:
             "Refusing to start — configuration errors:\n - " + "\n - ".join(fatal)
         )
 
+    # PDF export: the deck's PDF is converted from the PPTX by LibreOffice
+    # (app/services/pdf_convert.py). Required when pinned; advised otherwise.
+    from app.services.pdf_convert import soffice_available
+    if s.pdf_converter == "libreoffice" and not soffice_available():
+        raise RuntimeError(
+            "Refusing to start — PDF_CONVERTER=libreoffice but the `soffice` "
+            "binary was not found (install libreoffice-impress or set SOFFICE_PATH)."
+        )
+    if prod and s.pdf_converter == "auto" and not soffice_available():
+        logger.warning(
+            "LibreOffice (soffice) not found — PDF exports fall back to the "
+            "built-in renderer instead of converting the PowerPoint."
+        )
+
     # Non-fatal advisories (don't block boot, but should be addressed).
     if prod and not s.backup_encryption_key.get_secret_value():
         logger.warning("Production without backups configured — see docs/BACKUP.md")

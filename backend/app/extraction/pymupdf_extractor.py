@@ -4,14 +4,16 @@ Digital-PDF text extraction with PyMuPDF.
 Uses `get_text("blocks")`, which returns text blocks with their page
 positions (x0, y0, x1, y1). Blocks are sorted top-to-bottom then
 left-to-right so multi-column quote layouts read in a sane order, which
-matters a lot for label/value pairing ("Indemnity ..... 90%").
+matters a lot for label/value pairing ("Indemnity ..... 90%"). The
+positions are kept on each page (`PageText.blocks`, PDF points) alongside
+the joined text.
 """
 
 import logging
 
 import pymupdf
 
-from app.extraction.base import PageText, clean_text
+from app.extraction.base import PageText, TextBlock, clean_text
 
 logger = logging.getLogger(__name__)
 
@@ -27,8 +29,15 @@ def extract_pages_pymupdf(doc: pymupdf.Document) -> list[PageText]:
         # Sort by vertical position, then horizontal — natural reading order.
         text_blocks.sort(key=lambda b: (round(b[1], 1), round(b[0], 1)))
 
-        page_text = "\n".join(b[4].strip() for b in text_blocks if b[4].strip())
-        pages.append(PageText(page_number=page_index + 1, text=clean_text(page_text)))
+        kept = [b for b in text_blocks if b[4].strip()]
+        page_text = "\n".join(b[4].strip() for b in kept)
+        positioned = tuple(
+            TextBlock(round(b[0], 1), round(b[1], 1), round(b[2], 1), round(b[3], 1),
+                      clean_text(b[4].strip()))
+            for b in kept
+        )
+        pages.append(PageText(page_number=page_index + 1, text=clean_text(page_text),
+                              blocks=positioned))
 
     logger.info("PyMuPDF extracted %d pages", len(pages))
     return pages

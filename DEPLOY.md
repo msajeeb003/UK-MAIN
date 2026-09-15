@@ -46,7 +46,14 @@ no-training/no-retention posture and the terms to file.
    npm run users -- role admin@ukcib.co.uk admin      # /config/* access
    ```
 
-6. **Backups** — enable daily backups / PITR on the Supabase plan. The
+6. **Database migrations** run automatically: the container entrypoint applies
+   `alembic upgrade head` (backend/migrations) before the API starts. The first
+   run on the existing database adopts the tables, adds the CHECK constraints
+   and enables row-level security (docs/DATABASE.md).
+7. **PDF export** — the image installs LibreOffice (Impress) so the PDF is
+   converted from the generated PowerPoint; `GET /health` reports
+   `"pdf_converter": "libreoffice"` when it is in use.
+8. **Backups** — enable daily backups / PITR on the Supabase plan. The
    app's own backups (`docs/BACKUP.md`) cover `/data` (app SQLite DB,
    exports, and files when Storage is off).
 

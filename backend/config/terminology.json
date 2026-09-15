@@ -9,7 +9,11 @@
     "Nexus), the brokerage slide, QBE quotation, Atradius limit summary.",
     "excess_type is the exception (BRD 2.3): the row label is normalized",
     "but the VALUE keeps the insurer's own wording — its list below is",
-    "examples of wordings to recognise, never to replace."
+    "examples of wordings to recognise, never to replace.",
+    "'fields' holds wording ANY insurer may use. 'insurers' holds one",
+    "insurer's own wording per row, keyed by its id in insurers.json —",
+    "per-insurer format tuning lives here (and in the admin screen), never",
+    "in code. Score changes with:  python -m app.eval <corpus dir>"
   ],
   "fields": {
     "annual_turnover": [
@@ -87,5 +91,6 @@
       "Amount Agreed", "Limit Approved", "Limit Granted", "Limit Offered",
       "Credit Limit Decision", "Approved Credit Limit"
     ]
-  }
+  },
+  "insurers": {}
 }

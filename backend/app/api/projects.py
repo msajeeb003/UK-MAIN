@@ -31,7 +31,9 @@ from app.models.projects import (
     SortKey,
 )
 from app.services import documents as docs
+from app.services import exports as exports_svc
 from app.services import projects as repo
+from app.storage import StorageError
 
 logger = logging.getLogger(__name__)
 
@@ -178,8 +180,9 @@ def delete_project_data(project_id: str) -> None:
     from app.storage import StorageError, get_store
 
     with session_scope() as session:
-        keys = docs.storage_keys_for_project(session, project_id)
-        repo.delete(session, project_id)          # document records cascade
+        keys = (docs.storage_keys_for_project(session, project_id)
+                + exports_svc.storage_keys_for_project(session, project_id))
+        repo.delete(session, project_id)          # document + export records cascade
     store = get_store()
     for key in keys:
         try:
@@ -258,47 +261,64 @@ def remove_project_insurer(project_id: str, insurer_id: str, session: Db, user: 
 
 # ── Exports and retained documents ────────────────────────────────────────
 
-@router.get("/projects/{project_id}/exports/{format}")
-def download_export(project_id: str, format: str) -> Response:
-    """The latest generated file of this format (BRD S2 download links)."""
+def _legacy_export(project_id: str, format: str) -> tuple[str, bytes] | None:
+    """An export generated before the relational `exports` table existed:
+    a row in the SQLite table pointing at a file on disk. Read-only."""
     row = db.query_one(
         "SELECT filename, stored_path FROM exports WHERE project_id=? AND format=?",
         (project_id, format),
     )
     if row is None:
-        raise HTTPException(status_code=404, detail="No export generated yet.")
+        return None
     try:
         # `with` guarantees the handle is closed even if read() raises —
-        # on Windows an un-closed handle keeps the file locked, which would
-        # then block the next export (regeneration overwrites this path).
+        # on Windows an un-closed handle keeps the file locked.
         with open(row["stored_path"], "rb") as f:
-            content = f.read()
+            return row["filename"], f.read()
     except OSError as exc:
         raise HTTPException(status_code=404, detail="Export file missing.") from exc
-    media = {
-        "pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-        "pdf": "application/pdf",
-        "limits-xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    }.get(format, "application/octet-stream")
+
+
+def _export_file(session: Session, project_id: str, format: str) -> tuple[str, str, bytes]:
+    """(filename, media type, bytes) of the latest export of this format:
+    the relational record + object store first, else the legacy row."""
+    media = exports_svc.CONTENT_TYPES.get(format, "application/octet-stream")
+    row = exports_svc.get(session, project_id, format)
+    if row is not None:
+        try:
+            return row.filename, row.content_type or media, exports_svc.read(row)
+        except StorageError as exc:
+            logger.warning("Export object missing for %s/%s: %s", project_id, format, exc)
+            raise HTTPException(status_code=404, detail="Export file missing.") from exc
+    legacy = _legacy_export(project_id, format)
+    if legacy is None:
+        raise HTTPException(status_code=404, detail="No export generated yet.")
+    return legacy[0], media, legacy[1]
+
+
+@router.get("/projects/{project_id}/exports/{format}")
+def download_export(project_id: str, format: str, session: Db) -> Response:
+    """The latest generated file of this format (BRD S2 download links)."""
+    filename, media, content = _export_file(session, project_id, format)
     return Response(
         content=content, media_type=media,
-        headers={"Content-Disposition": f'attachment; filename="{row["filename"]}"'},
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 
 @router.get("/projects/{project_id}/exports/pdf/page/{page}")
-def export_pdf_page(project_id: str, page: int) -> Response:
+def export_pdf_page(project_id: str, page: int, session: Db) -> Response:
     """One page of the latest generated PDF as an image (S8 preview). The
     preview is rendered from the same file the broker downloads, so it
     matches page for page. X-Page-Count lets the viewer paginate."""
-    row = db.query_one(
-        "SELECT stored_path FROM exports WHERE project_id=? AND format='pdf'",
-        (project_id,),
-    )
-    if row is None:
-        raise HTTPException(status_code=404, detail="No PDF generated yet.")
     try:
-        doc = pymupdf.open(row["stored_path"])
+        _, _, content = _export_file(session, project_id, "pdf")
+    except HTTPException as exc:
+        if exc.status_code == 404 and "No export" in str(exc.detail):
+            raise HTTPException(status_code=404, detail="No PDF generated yet.") from exc
+        raise
+    try:
+        doc = pymupdf.open(stream=content, filetype="pdf")
     except Exception as exc:
         raise HTTPException(status_code=404, detail="Export file missing.") from exc
     try:
