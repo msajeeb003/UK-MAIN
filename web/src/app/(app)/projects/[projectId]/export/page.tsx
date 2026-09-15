@@ -1,10 +1,10 @@
 import type { Metadata } from "next";
 
-import { StepPlaceholder } from "@/components/shared/step-placeholder";
+import { ExportScreen } from "@/components/export/export-screen";
 
 export const metadata: Metadata = { title: "Generate" };
 
-export default async function Page({ params }: PageProps<"/projects/[projectId]/export">) {
-  const { projectId } = await params;
-  return <StepPlaceholder projectId={projectId} step="export" />;
+/** S8 — Generate and export the presentation. */
+export default function ExportPage() {
+  return <ExportScreen />;
 }

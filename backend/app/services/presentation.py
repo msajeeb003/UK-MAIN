@@ -264,10 +264,12 @@ def _limits_total_row(req: PresentationRequest) -> list[str]:
 
 
 def suggested_filename(req: PresentationRequest, extension: str) -> str:
-    # ASCII-only: HTTP headers are latin-1 and a non-ASCII client name must
-    # never be able to break the download response.
+    """S8 download name: "{Renewal|Credit Insurance} Presentation of Terms -
+    {Client}.{ext}". ASCII-only: HTTP headers are latin-1 and a non-ASCII
+    client name must never be able to break the download response."""
     client = re.sub(r"[^A-Za-z0-9 \-]", "", req.client_name).strip() or "Client"
-    return f"{client[:80]} - {cover_title(req)}.{extension}"
+    kind = "Renewal" if req.project_type == "renewal" else "Credit Insurance"
+    return f"{kind} Presentation of Terms - {client[:80]}.{extension}"
 
 
 def _cell_text(value: str | None) -> str:

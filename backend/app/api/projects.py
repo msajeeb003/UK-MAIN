@@ -116,6 +116,33 @@ def download_export(project_id: str, format: str) -> Response:
     )
 
 
+@router.get("/projects/{project_id}/exports/pdf/page/{page}")
+def export_pdf_page(project_id: str, page: int) -> Response:
+    """One page of the latest generated PDF as an image (S8 preview). The
+    preview is rendered from the same file the broker downloads, so it
+    matches page for page. X-Page-Count lets the viewer paginate."""
+    row = db.query_one(
+        "SELECT stored_path FROM exports WHERE project_id=? AND format='pdf'",
+        (project_id,),
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail="No PDF generated yet.")
+    try:
+        doc = pymupdf.open(row["stored_path"])
+    except Exception as exc:
+        raise HTTPException(status_code=404, detail="Export file missing.") from exc
+    try:
+        if not 1 <= page <= doc.page_count:
+            raise HTTPException(status_code=404, detail="Page out of range.")
+        png = doc[page - 1].get_pixmap(dpi=96).tobytes("png")
+        page_count = doc.page_count
+    finally:
+        doc.close()
+    return Response(content=png, media_type="image/png",
+                    headers={"Cache-Control": "private, no-store",
+                             "X-Page-Count": str(page_count)})
+
+
 @router.get("/documents/{document_id}/page/{page}")
 def document_page(document_id: str, page: int) -> Response:
     """One page of a retained PDF as an image — S5: clicking a value opens

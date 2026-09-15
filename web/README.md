@@ -74,8 +74,8 @@ src/
 │   ├── review/                 ReviewScreen, ComparisonGrid, GridCell, ConfirmBar, SourceViewer (split panel + modal) (S5)
 │   ├── limits/                 LimitsScreen, LimitsGrid, LimitCell (S6)
 │   ├── recommend/              RecommendScreen, MiniGrid (S7)
-│   ├── projects/               ProjectsList
-│   └── shared/                 StepPlaceholder (scaffold body for each step)
+│   ├── export/                 ExportScreen, DeckPreview (S8)
+│   └── projects/               ProjectsList
 ├── hooks/                      useSession, useProject, useInsurers, useUploadQueue, useReviewDraft, useIsMobile
 └── lib/
     ├── api/
@@ -90,6 +90,7 @@ src/
     ├── review.ts               S5 cell provenance, blank-vs-zero, edits, tick-order columns + declined, review gate
     ├── limits.ts               S6 buyer rows, £ normalisation, totals, add/remove row & column
     ├── recommend.ts            S7 recommended insurer, fixed-wording merge, reasons points
+    ├── export.ts               S8 summary, presentation request, file names, generated/superseded state
     ├── env.ts                  NEXT_PUBLIC_* config
     └── download.ts             saveBlob() for exports
 ```

@@ -11,7 +11,7 @@ export const PROJECT_STATUSES: readonly ProjectStatus[] = ["draft", "ready", "se
 
 export const PROJECT_STATUS_META: Record<ProjectStatus, { label: string; hint: string }> = {
   draft: { label: "Draft", hint: "In preparation; nothing generated yet" },
-  ready: { label: "Ready", hint: "Presentation generated and ready to proofread" },
+  ready: { label: "Generated", hint: "Presentation generated; proofread and send" },
   sent: { label: "Sent", hint: "Presentation sent to the client" },
   closed: { label: "Closed", hint: "Closed; reopen to return to the review screen" },
 };

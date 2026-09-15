@@ -51,6 +51,16 @@ export const projectsApi = {
   exportUrl: (projectId: string, format: ExportFormat) =>
     buildUrl(`/projects/${encodeURIComponent(projectId)}/exports/${format}`),
 
+  /** One page of the latest generated PDF as an image (S8 preview). */
+  async exportPdfPage(projectId: string, page: number, signal?: AbortSignal): Promise<{ blob: Blob; pageCount: number | null }> {
+    const { blob, headers } = await requestBlob(
+      `/projects/${encodeURIComponent(projectId)}/exports/pdf/page/${page}`,
+      { signal, timeoutMs: 30_000 },
+    );
+    const count = Number(headers.get("x-page-count"));
+    return { blob, pageCount: Number.isFinite(count) && count > 0 ? count : null };
+  },
+
   /**
    * Fetch the latest generated export as a file. Goes through the client
    * (not a plain link) so the Authorization header is attached.

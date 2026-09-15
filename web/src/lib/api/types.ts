@@ -58,6 +58,8 @@ export interface ProjectState {
   status?: string;
   /** True once a presentation has been generated (download links exist). */
   exported?: boolean;
+  /** Epoch ms of the last successful generation (S8). */
+  generatedAt?: number;
   /** Status before the project was closed, restored on reopen. */
   closedFrom?: string;
   closedAt?: number;

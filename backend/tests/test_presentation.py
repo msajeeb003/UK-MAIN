@@ -266,7 +266,7 @@ def test_endpoint_gate_and_download_headers(client):
     assert res.headers["content-type"].startswith(
         "application/vnd.openxmlformats-officedocument.presentationml"
     )
-    assert 'filename="Aldgate Timber Ltd - Credit Insurance Presentation.pptx"' in (
+    assert 'filename="Credit Insurance Presentation of Terms - Aldgate Timber Ltd.pptx"' in (
         res.headers["content-disposition"]
     )
     assert Presentation(io.BytesIO(res.content))  # valid, editable pptx

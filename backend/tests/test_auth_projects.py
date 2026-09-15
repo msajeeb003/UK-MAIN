@@ -251,3 +251,26 @@ def test_document_retained_with_source_page_view(client, digital_pdf,
     assert page.headers["x-page-count"] == "2"
     assert client.get(f"/documents/{doc_id}/page/99").status_code == 404
     client.delete("/projects/p-doc-1")
+
+
+def test_export_pdf_pages_render_for_the_preview(client):
+    """S8 preview: pages come from the same PDF the broker downloads."""
+    payload = make_request(project_type="renewal").model_dump()
+    assert client.get("/projects/p-exp-2/exports/pdf/page/1").status_code == 404
+
+    res = client.post("/generate-presentation?format=pdf&project_id=p-exp-2", json=payload)
+    assert res.status_code == 200
+    assert 'filename="Renewal Presentation of Terms - Aldgate Timber Ltd.pdf"' in (
+        res.headers["content-disposition"]
+    )
+
+    page = client.get("/projects/p-exp-2/exports/pdf/page/1")
+    assert page.status_code == 200
+    assert page.headers["content-type"] == "image/png"
+    assert page.content[0] == 137 and page.content[1:4] == b"PNG"
+    count = int(page.headers["x-page-count"])
+    assert count >= 6
+    assert client.get(f"/projects/p-exp-2/exports/pdf/page/{count}").status_code == 200
+    assert client.get(f"/projects/p-exp-2/exports/pdf/page/{count + 1}").status_code == 404
+    client.delete("/projects/p-exp-2")
+

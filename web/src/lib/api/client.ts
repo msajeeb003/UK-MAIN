@@ -172,6 +172,9 @@ export async function request(path: string, options: RequestOptions = {}): Promi
     if (token) headers.Authorization = `Bearer ${token}`;
   }
 
+  // The caller may have given up while the token was being read.
+  if (options.signal?.aborted) throw options.signal.reason ?? new DOMException("Aborted", "AbortError");
+
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(new ApiTimeoutError(timeoutMs)), timeoutMs);
