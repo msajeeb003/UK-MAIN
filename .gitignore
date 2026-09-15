@@ -2,6 +2,12 @@
 __pycache__/
 *.pyc
 .env
+.env.*
+web.env
+web.env.*
+# …but keep the committed templates:
+!.env*.example
+!web.env*.example
 data/
 .claude/
 
