@@ -397,8 +397,10 @@ def build_pptx(req: PresentationRequest) -> bytes:
     if declined_line:
         body += [(declined_line, True), ("", False)]
     body += [(p, False) for p in _important_information().split("\n")]
-    _textbox(slide, 30, 72, SLIDE_W - 60, 730, body, size=16, align=PP_ALIGN.CENTER,
-             line_spacing=1.15)
+    # Inset from the corner graphics (they reach 209 pt in from each side at
+    # the top); the template's lines are set with the same clearance.
+    _textbox(slide, 110, 74, SLIDE_W - 220, 730, body, size=16, align=PP_ALIGN.CENTER,
+             line_spacing=1.3)
 
     # ── 4. Terms Comparison ──────────────────────────────────────────────
     slide = prs.slides.add_slide(blank)
