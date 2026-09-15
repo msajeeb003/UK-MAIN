@@ -215,3 +215,10 @@
       linear-gradient(155deg, #0d1226, #1a2350);
   }
 }
+
+/* The wireframe's page entrance. */
+@keyframes qcfade {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+.animate-qcfade { animation: qcfade 0.25s ease; }

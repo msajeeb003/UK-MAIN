@@ -11,7 +11,7 @@ export const PROJECT_STATUSES: readonly ProjectStatus[] = ["draft", "ready", "se
 
 export const PROJECT_STATUS_META: Record<ProjectStatus, { label: string; hint: string }> = {
   draft: { label: "Draft", hint: "In preparation; nothing generated yet" },
-  ready: { label: "Generated", hint: "Presentation generated; proofread and send" },
+  ready: { label: "Ready", hint: "Presentation generated; proofread and send" },
   sent: { label: "Sent", hint: "Presentation sent to the client" },
   closed: { label: "Closed", hint: "Closed; reopen to return to the review screen" },
 };
@@ -54,11 +54,21 @@ export function updatedTimestamp(p: ProjectState): number {
   return 0;
 }
 
+/** Wireframe list date: "12 Aug" (the year is added once it is not the current one). */
 export function formatUpdated(value: unknown): string {
   if (typeof value === "number" && Number.isFinite(value) && value > 0) {
-    return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(
-      new Date(value),
-    );
+    const date = new Date(value);
+    const sameYear = date.getFullYear() === new Date().getFullYear();
+    return new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", ...(sameYear ? {} : { year: "numeric" }) }).format(date);
+  }
+  if (typeof value === "string") return value;
+  return "";
+}
+
+/** Full timestamp for tooltips and the export screen. */
+export function formatUpdatedFull(value: unknown): string {
+  if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+    return new Intl.DateTimeFormat("en-GB", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
   }
   if (typeof value === "string") return value;
   return "";

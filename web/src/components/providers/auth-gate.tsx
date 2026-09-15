@@ -25,16 +25,12 @@ export function AuthGate({ children }: { children: ReactNode }) {
 
   if (status !== "authenticated") {
     return (
-      <div className="flex min-h-screen">
-        <div className="hidden w-64 border-r bg-sidebar p-4 md:block">
-          <Skeleton className="mb-6 h-8 w-40" />
-          <div className="space-y-2">
-            <Skeleton className="h-8 w-full" />
-            <Skeleton className="h-8 w-full" />
-            <Skeleton className="h-8 w-3/4" />
-          </div>
+      <div className="min-h-screen">
+        <div className="flex h-[60px] items-center justify-between border-b border-line bg-surface px-6">
+          <Skeleton className="h-7 w-36" />
+          <Skeleton className="size-8 rounded-full" />
         </div>
-        <div className="flex-1 p-8">
+        <div className="mx-auto max-w-[1100px] px-[26px] pt-[34px]">
           <Skeleton className="mb-6 h-8 w-64" />
           <Skeleton className="h-40 w-full" />
         </div>

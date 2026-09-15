@@ -1,29 +1,22 @@
 "use client";
 
-import { Check, CircleAlert, Download, FileSpreadsheet, LoaderCircle, RefreshCw, Sparkles, TriangleAlert } from "lucide-react";
+import { Check, CircleAlert, FileSpreadsheet, LoaderCircle, TriangleAlert } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import { toast } from "sonner";
 
 import { DeckPreview } from "@/components/export/deck-preview";
-import { PageHeader } from "@/components/layout/page-header";
 import { ProjectScreen } from "@/components/projects/project-screen";
+import { MiniGrid } from "@/components/recommend/mini-grid";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { useInsurers } from "@/hooks/use-insurers";
 import { useProject } from "@/hooks/use-project";
 import { ApiError, errorMessage, presentationApi, projectsApi, type ExportFormat, type ProjectState } from "@/lib/api";
 import { saveBlob } from "@/lib/download";
-import {
-  buildPresentationRequest,
-  editStats,
-  exportFilename,
-  exportSummary,
-  generatedAt,
-  isSuperseded,
-  markGenerated,
-} from "@/lib/export";
-import { PROJECT_STEPS, routes } from "@/lib/navigation";
+import { buildPresentationRequest, editStats, exportFilename, exportSummary, generatedAt, isSuperseded, markGenerated } from "@/lib/export";
+import { routes } from "@/lib/navigation";
+import { formatUpdatedFull } from "@/lib/projects";
 import { cn } from "@/lib/utils";
 
 type Phase = "idle" | "pptx" | "pdf" | "saving" | "done" | "error";
@@ -42,6 +35,12 @@ function stepState(phase: Phase, step: Phase): "done" | "active" | "todo" {
   return c > i ? "done" : c === i ? "active" : "todo";
 }
 
+const DownloadIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14" />
+  </svg>
+);
+
 function ExportBody({ project }: { project: ProjectState }) {
   const { update } = useProject();
   const { insurers } = useInsurers();
@@ -55,7 +54,13 @@ function ExportBody({ project }: { project: ProjectState }) {
   const generated = generatedAt(project);
   const superseded = isSuperseded(project);
   const busy = phase === "pptx" || phase === "pdf" || phase === "saving";
-  const canGenerate = summary.blockers.length === 0 && !busy;
+  const gateOk = summary.blockers.length === 0;
+  const canGenerate = gateOk && !busy;
+  const hasFiles = Boolean(generated) || phase === "done";
+  const canDownload = hasFiles && !busy && downloading === null;
+  const left = 4 - summary.confirmedCount;
+  const isRenewal = summary.kind === "renewal";
+  const coverDate = new Intl.DateTimeFormat("en-GB", { month: "long", year: "numeric" }).format(new Date());
 
   const generate = async () => {
     setError(null);
@@ -95,185 +100,181 @@ function ExportBody({ project }: { project: ProjectState }) {
     }
   };
 
-  const hasFiles = Boolean(generated) || phase === "done";
-
   return (
-    <div className="space-y-5">
-      <PageHeader
-        eyebrow={`Step 6 of ${PROJECT_STEPS.length}`}
-        title="Generate and export"
-        description="Build the presentation from the reviewed comparison, check the preview, then download. Regenerating replaces the previous files under this project. Nothing is sent from the system."
-      />
+    <div className="grid items-start gap-[26px] lg:grid-cols-[minmax(0,1fr)_300px]">
+      {/* ── Preview ───────────────────────────────────────────────── */}
+      <div className="min-w-0">
+        <h1 className="mb-1.5 text-[26px] font-bold tracking-[-0.4px] text-ink">Generate &amp; export</h1>
+        <p className="mb-5 text-[13.5px] text-ink-2">Preview of the presentation. Regenerating replaces the previous export under this project.</p>
 
-      <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
-        {/* ── Preview ─────────────────────────────────────────────── */}
-        <section className="space-y-4">
-          {hasFiles ? (
-            <>
-              {superseded && (
-                <Alert className="border-warn/40 bg-warn-soft text-warn [&>svg]:text-warn">
-                  <TriangleAlert />
-                  <AlertTitle>Edited since the last generation</AlertTitle>
-                  <AlertDescription className="text-warn">
-                    The preview and any files downloaded earlier no longer match the project. Regenerate before sending.
-                  </AlertDescription>
-                </Alert>
-              )}
-              <DeckPreview projectId={project.id} version={previewVersion} />
-            </>
-          ) : (
-            <div className="rounded-xl border border-dashed bg-card px-6 py-14 text-center">
-              <Sparkles className="mx-auto mb-3 size-6 text-primary" />
-              <p className="text-sm font-medium">No presentation generated yet</p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Generate it to see every slide here, exactly as it will download.
-              </p>
+        {superseded && hasFiles && (
+          <Alert className="mb-4 border-warn/40 bg-warn-soft text-warn [&>svg]:text-warn">
+            <TriangleAlert />
+            <AlertTitle>Edited since the last generation</AlertTitle>
+            <AlertDescription className="text-warn">
+              The preview and any files downloaded earlier no longer match the project. Regenerate before sending.
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {hasFiles ? (
+          <DeckPreview projectId={project.id} version={previewVersion} />
+        ) : (
+          <div className="flex flex-col gap-4" aria-label="Presentation preview">
+            {/* cover */}
+            <div className="flex aspect-video max-w-full flex-col justify-center rounded-[10px] border border-line bg-[linear-gradient(155deg,#0f1424,#252f68)] px-10 py-[34px] text-white shadow-[0_4px_18px_rgba(20,30,50,.08)]">
+              <div className="mb-4 font-mono text-xs font-medium tracking-[1.5px] text-[#8fa2c9] uppercase">{isRenewal ? "Renewal" : "New business"}</div>
+              <div className="max-w-[80%] text-[clamp(22px,3.4vw,34px)] leading-[1.15] font-semibold tracking-[-0.5px]">{summary.coverTitle}</div>
+              <div className="mt-5 text-[15px] text-[#c3cfe0]">
+                {summary.clientName || <span className="text-warn">Client name not set</span>} · {coverDate}
+              </div>
             </div>
-          )}
-        </section>
-
-        {/* ── Summary + actions ──────────────────────────────────── */}
-        <aside className="space-y-4 lg:sticky lg:top-20">
-          <div className="rounded-xl border bg-card p-4 shadow-card">
-            <h2 className="text-sm font-semibold">Presentation summary</h2>
-            <dl className="mt-3 space-y-2 text-sm">
-              <div className="flex justify-between gap-3">
-                <dt className="text-muted-foreground">Client</dt>
-                <dd className="text-right font-medium">{summary.clientName || <span className="text-warn">not set</span>}</dd>
-              </div>
-              <div className="flex justify-between gap-3">
-                <dt className="text-muted-foreground">Type</dt>
-                <dd className="text-right">{summary.kind === "renewal" ? "Renewal" : "New business"}</dd>
-              </div>
-              <div className="flex justify-between gap-3">
-                <dt className="text-muted-foreground">Front page</dt>
-                <dd className="text-right text-xs">{summary.coverTitle}</dd>
-              </div>
-              <div>
-                <dt className="text-muted-foreground">Insurers included</dt>
-                <dd className="mt-0.5">{summary.included.length ? summary.included.join(", ") : <span className="text-warn">none yet</span>}</dd>
+            {/* important information */}
+            <div className="rounded-[14px] border border-line bg-white px-7 py-6 shadow-card">
+              <div className="mb-2.5 text-base font-semibold text-ink">Important information</div>
+              <p className="mb-3.5 text-xs leading-[1.6] text-ink-2">
+                Regulatory wording as required by the Financial Conduct Authority. This summary does not amend the policy documents.
+              </p>
+              <div className="mb-1.5 font-mono text-[10.5px] font-medium tracking-[.5px] text-ink-3 uppercase">Insurers approached</div>
+              <div className="mb-2 text-[12.5px] text-ink">
+                {summary.included.length ? `${summary.included.join(", ")} — quotations obtained.` : "No quotations obtained yet."}
               </div>
               {summary.declined.length > 0 && (
-                <div>
-                  <dt className="text-muted-foreground">Declined to quote</dt>
-                  <dd className="mt-0.5">{summary.declined.join(", ")}</dd>
+                <div className="rounded-md bg-warn-soft px-2.5 py-[7px] text-[12.5px] text-warn">
+                  {summary.declined.join(", ")} {summary.declined.length === 1 ? "was" : "were"} approached but declined to quote.
                 </div>
-              )}
-              {summary.hasExpiring && (
-                <div className="flex justify-between gap-3">
-                  <dt className="text-muted-foreground">Expiring policy</dt>
-                  <dd>included as baseline</dd>
-                </div>
-              )}
-              <div className="flex justify-between gap-3">
-                <dt className="text-muted-foreground">Recommended</dt>
-                <dd className="text-right">{summary.recommended ?? <span className="text-muted-foreground">none</span>}</dd>
-              </div>
-              <div className="flex justify-between gap-3">
-                <dt className="text-muted-foreground">Credit-limit buyers</dt>
-                <dd>{summary.buyerCount ? summary.buyerCount : <span className="text-muted-foreground">0 · page omitted</span>}</dd>
-              </div>
-              <div className="flex justify-between gap-3">
-                <dt className="text-muted-foreground">Key values confirmed</dt>
-                <dd className={cn(summary.confirmedCount === 4 ? "text-ok" : "text-warn")}>{summary.confirmedCount} of 4</dd>
-              </div>
-            </dl>
-          </div>
-
-          {summary.blockers.length > 0 && (
-            <Alert className="border-warn/40 bg-warn-soft [&>svg]:text-warn">
-              <CircleAlert />
-              <AlertTitle className="text-warn">Before generating</AlertTitle>
-              <AlertDescription>
-                <ul className="list-disc pl-4 text-warn">
-                  {summary.blockers.map((b) => (
-                    <li key={b}>{b}</li>
-                  ))}
-                </ul>
-              </AlertDescription>
-            </Alert>
-          )}
-
-          <div className="rounded-xl border bg-card p-4 shadow-card">
-            <Button size="lg" className="w-full" disabled={!canGenerate} onClick={generate}>
-              {busy ? <LoaderCircle className="animate-spin" data-icon="inline-start" /> : hasFiles ? <RefreshCw data-icon="inline-start" /> : <Sparkles data-icon="inline-start" />}
-              {busy ? "Generating…" : hasFiles ? "Regenerate presentation" : "Generate presentation"}
-            </Button>
-
-            {(busy || phase === "done") && (
-              <ol className="mt-3 space-y-1.5" aria-live="polite">
-                {STEPS.map((s) => {
-                  const st = stepState(phase, s.phase);
-                  return (
-                    <li key={s.phase} className={cn("flex items-center gap-2 text-xs", st === "todo" ? "text-ink-3" : st === "active" ? "text-foreground" : "text-ok")}>
-                      {st === "done" ? <Check className="size-3.5" /> : st === "active" ? <LoaderCircle className="size-3.5 animate-spin" /> : <span className="size-3.5 rounded-full border" />}
-                      {s.label}
-                    </li>
-                  );
-                })}
-              </ol>
-            )}
-
-            {phase === "error" && error && (
-              <Alert variant="destructive" className="mt-3">
-                <CircleAlert />
-                <AlertTitle>{error.blocked ? "Export blocked" : "Generation failed"}</AlertTitle>
-                <AlertDescription className="space-y-2">
-                  <p>{error.message}</p>
-                  <div className="flex flex-wrap gap-2">
-                    {!error.blocked && (
-                      <Button size="sm" variant="outline" onClick={generate}>
-                        Try again
-                      </Button>
-                    )}
-                    <Button size="sm" variant="outline" nativeButton={false} render={<Link href={routes.projectStep(project.id, "review")} />}>
-                      Go to Review
-                    </Button>
-                  </div>
-                </AlertDescription>
-              </Alert>
-            )}
-
-            <div className="mt-4 space-y-2">
-              <Button variant={hasFiles ? "default" : "outline"} className="w-full" disabled={!hasFiles || busy || downloading !== null} onClick={() => download("pptx")}>
-                {downloading === "pptx" ? <LoaderCircle className="animate-spin" data-icon="inline-start" /> : <Download data-icon="inline-start" />}
-                Download PowerPoint
-              </Button>
-              <Button variant="outline" className="w-full" disabled={!hasFiles || busy || downloading !== null} onClick={() => download("pdf")}>
-                {downloading === "pdf" ? <LoaderCircle className="animate-spin" data-icon="inline-start" /> : <Download data-icon="inline-start" />}
-                Download PDF
-              </Button>
-              {summary.buyerCount > 0 && (
-                <Button variant="ghost" size="sm" className="w-full" disabled={!hasFiles || busy || downloading !== null} onClick={() => download("limits-xlsx")}>
-                  {downloading === "limits-xlsx" ? <LoaderCircle className="animate-spin" data-icon="inline-start" /> : <FileSpreadsheet data-icon="inline-start" />}
-                  Credit limits as Excel
-                </Button>
               )}
             </div>
-
-            <p className="mt-3 text-xs text-muted-foreground">
-              {hasFiles
-                ? `File name: ${exportFilename(project, "pptx")}`
-                : "PowerPoint (editable, Google Slides compatible) and PDF of the same deck."}
-            </p>
-            {generated && (
-              <p className="mt-1 text-xs text-muted-foreground">
-                Last generated {new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(generated))}
-                {superseded ? " · edited since" : ""}
-              </p>
-            )}
+            {/* terms mini */}
+            <div className="overflow-hidden rounded-[14px] border border-line bg-white px-6 py-[22px] shadow-card">
+              <div className="mb-3 text-base font-semibold text-ink">Terms comparison</div>
+              <MiniGrid project={project} recommendedId={typeof project.recommended === "string" ? project.recommended : null} />
+              <div className="mt-2.5 font-mono text-[10.5px] font-medium text-ink-3">
+                {summary.buyerCount ? "+ buyer credit limits · " : ""}comments &amp; recommendation · contact
+              </div>
+            </div>
           </div>
-
-          <Button variant="outline" className="w-full" nativeButton={false} render={<Link href={routes.projectStep(project.id, "recommend")} />}>
-            Back to recommendation
-          </Button>
-        </aside>
+        )}
       </div>
+
+      {/* ── Export panel ──────────────────────────────────────────── */}
+      <aside className="rounded-[14px] border border-line bg-surface p-5 shadow-card lg:sticky lg:top-[76px]">
+        <div className="mb-1 text-[15px] font-semibold text-ink">Export</div>
+        <div className="mb-4 text-[12.5px] text-ink-2">One to two minutes. Nothing is sent from the system.</div>
+
+        <div className="mb-4 flex flex-col gap-2.5">
+          <Button className="h-11 w-full rounded-[9px]" disabled={!canGenerate} onClick={generate}>
+            {busy && <LoaderCircle className="animate-spin" />}
+            {busy ? "Generating…" : hasFiles ? "Regenerate presentation" : "Generate presentation"}
+          </Button>
+          <button
+            type="button"
+            disabled={!canDownload}
+            onClick={() => download("pptx")}
+            className={cn(
+              "flex h-11 w-full items-center justify-center gap-2 rounded-[9px] text-sm font-semibold transition-colors",
+              canDownload ? "bg-primary text-white shadow-[0_1px_2px_rgba(79,70,229,.4)] hover:bg-accent-foreground" : "cursor-not-allowed bg-[#e7eaef] text-ink-3 opacity-70",
+            )}
+          >
+            {downloading === "pptx" ? <LoaderCircle className="size-4 animate-spin" /> : <DownloadIcon />}
+            Download PowerPoint
+          </button>
+          <button
+            type="button"
+            disabled={!canDownload}
+            onClick={() => download("pdf")}
+            className={cn(
+              "flex h-11 w-full items-center justify-center gap-2 rounded-[9px] border bg-surface text-sm font-semibold transition-colors",
+              canDownload ? "border-primary text-primary hover:bg-accent" : "cursor-not-allowed border-line text-ink-3 opacity-70",
+            )}
+          >
+            {downloading === "pdf" ? <LoaderCircle className="size-4 animate-spin" /> : <DownloadIcon />}
+            Download PDF
+          </button>
+          {summary.buyerCount > 0 && (
+            <Button variant="ghost" size="sm" className="w-full" disabled={!canDownload} onClick={() => download("limits-xlsx")}>
+              {downloading === "limits-xlsx" ? <LoaderCircle className="animate-spin" /> : <FileSpreadsheet />}
+              Credit limits as Excel
+            </Button>
+          )}
+        </div>
+
+        {(busy || phase === "done") && (
+          <ol className="mb-3 space-y-1.5" aria-live="polite">
+            {STEPS.map((s) => {
+              const st = stepState(phase, s.phase);
+              return (
+                <li key={s.phase} className={cn("flex items-center gap-2 text-xs", st === "todo" ? "text-ink-3" : st === "active" ? "text-ink" : "text-ok")}>
+                  {st === "done" ? <Check className="size-3.5" /> : st === "active" ? <LoaderCircle className="size-3.5 animate-spin" /> : <span className="size-3.5 rounded-full border border-line" />}
+                  {s.label}
+                </li>
+              );
+            })}
+          </ol>
+        )}
+
+        <div
+          className={cn(
+            "rounded-[9px] border px-[13px] py-[11px] text-xs leading-[1.5]",
+            gateOk ? "border-ok bg-ok-soft text-ok" : "border-warn bg-warn-soft text-warn",
+          )}
+          role="status"
+        >
+          {gateOk
+            ? "✓ All key values confirmed. Export is enabled."
+            : left > 0
+              ? `⚠ Export is blocked until Est. premium, indemnity, excess and max liability are confirmed on the review screen (${left} remaining).`
+              : "⚠ Export is blocked."}
+          {summary.blockers.filter((b) => !b.startsWith("Confirm the four")).map((b) => (
+            <span key={b} className="mt-1 block">
+              {b}
+            </span>
+          ))}
+        </div>
+
+        {phase === "done" && (
+          <div className="mt-3 rounded-lg bg-ok-soft px-3 py-2.5 text-[12.5px] font-medium text-ok">✓ Files generated — ready to proofread &amp; send.</div>
+        )}
+
+        {phase === "error" && error && (
+          <Alert variant="destructive" className="mt-3">
+            <CircleAlert />
+            <AlertTitle>{error.blocked ? "Export blocked" : "Generation failed"}</AlertTitle>
+            <AlertDescription className="space-y-2">
+              <p>{error.message}</p>
+              <div className="flex flex-wrap gap-2">
+                {!error.blocked && (
+                  <Button size="sm" variant="outline" onClick={generate}>
+                    Try again
+                  </Button>
+                )}
+                <Button size="sm" variant="outline" nativeButton={false} render={<Link href={routes.projectStep(project.id, "review")} />}>
+                  Go to Review
+                </Button>
+              </div>
+            </AlertDescription>
+          </Alert>
+        )}
+
+        <div className="mt-[18px] flex justify-between border-t border-line-2 pt-3.5 text-xs text-ink-3">
+          <span>Type</span>
+          <span className="font-medium text-ink">{isRenewal ? "Renewal" : "New business"}</span>
+        </div>
+        <Link href={routes.projectStep(project.id, "setup")} className="mt-1.5 block text-xs font-medium text-primary hover:no-underline">
+          Switch to {isRenewal ? "new business" : "renewal"} in Setup →
+        </Link>
+        {generated && (
+          <p className="mt-3 text-xs text-ink-3">
+            Last generated {formatUpdatedFull(generated)}
+            {superseded ? " · edited since" : ""}. File: {exportFilename(project, "pptx")}
+          </p>
+        )}
+      </aside>
     </div>
   );
 }
 
-/** S8 — Generate and export. Client boundary for the page. */
+/** S8 — Generate & export. Client boundary for the page. */
 export function ExportScreen() {
   return <ProjectScreen>{(project) => <ExportBody key={project.id} project={project} />}</ProjectScreen>;
 }

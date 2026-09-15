@@ -1,24 +1,25 @@
 import { Logo } from "@/components/layout/logo";
 
-/** Two-column sign-in frame from the wireframe: dark hero + form panel. */
+/** The wireframe's sign-in frame: dark hero on the left, the form on the right. */
 export default function AuthLayout({ children }: LayoutProps<"/">) {
   return (
     <div className="grid min-h-screen lg:grid-cols-[1.05fr_1fr]">
-      <aside className="hero-gradient hidden flex-col justify-between p-14 text-white lg:flex">
-        <Logo inverted />
-        <div className="max-w-md space-y-4">
-          <h2 className="text-3xl font-semibold leading-tight tracking-tight">
-            Compare trade-credit quotes in minutes, not afternoons.
-          </h2>
-          <p className="text-sm leading-relaxed text-white/70">
-            Upload insurer quotes, review every extracted value against its source page, and
-            generate the client presentation once the key figures are confirmed.
+      <aside className="hero-gradient hidden flex-col justify-between px-[60px] py-14 text-white lg:flex">
+        <Logo size="hero" inverted />
+        <div className="max-w-[440px]">
+          <div className="mb-[18px] font-mono text-[13px] font-medium tracking-[1px] text-[#8fa2c9] uppercase">Internal tool</div>
+          <h1 className="mb-[18px] text-[42px] leading-[1.08] font-bold tracking-[-0.9px]">
+            Turn insurer quotes into a client comparison in under five minutes.
+          </h1>
+          <p className="text-[15px] leading-[1.6] text-[#b9c4d6]">
+            Upload the quotes, review the extracted terms, pick your recommendation, and generate the
+            presentation — proofread and send.
           </p>
         </div>
-        <p className="label-mono text-white/50">Internal broker tool · authorised users only</p>
+        <span aria-hidden />
       </aside>
-      <main className="flex items-center justify-center p-6 sm:p-10">
-        <div className="w-full max-w-sm">
+      <main className="grid place-items-center p-10">
+        <div className="w-full max-w-[340px]">
           <div className="mb-8 lg:hidden">
             <Logo />
           </div>

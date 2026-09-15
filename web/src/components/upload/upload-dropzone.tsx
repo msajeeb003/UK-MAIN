@@ -2,7 +2,6 @@
 
 import { useId, useRef, useState, type DragEvent, type ReactNode } from "react";
 
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 interface UploadDropzoneProps {
@@ -11,19 +10,16 @@ interface UploadDropzoneProps {
   accept: string;
   multiple?: boolean;
   disabled?: boolean;
-  /** Reason shown when disabled (e.g. quote cap reached). */
+  /** Reason shown in place of the hint when disabled (e.g. quote cap reached). */
   disabledReason?: string;
   icon: ReactNode;
   tone?: "default" | "accent" | "warn";
-  /** Small line under the button, e.g. "3 of 6 used". */
-  footer?: ReactNode;
   onFiles: (files: File[]) => void;
 }
 
 /**
- * Drag-and-drop slot with a file-picker fallback. Only the browser's
- * native drag events are used, so folders and multiple files work anywhere
- * the OS supports them; the keyboard path is the button.
+ * Wireframe upload tile: dashed card, icon box, title, hint and a
+ * "Choose files" button. Dropping files on the tile also works.
  */
 export function UploadDropzone({
   title,
@@ -34,7 +30,6 @@ export function UploadDropzone({
   disabledReason,
   icon,
   tone = "default",
-  footer,
   onFiles,
 }: UploadDropzoneProps) {
   const inputId = useId();
@@ -83,24 +78,24 @@ export function UploadDropzone({
       onDragOver={onDragOver}
       onDrop={onDrop}
       className={cn(
-        "flex flex-col items-center rounded-xl border-[1.5px] border-dashed px-4 py-6 text-center transition-colors",
-        tone === "warn" ? "border-warn/60 bg-warn-soft" : "border-border bg-card",
+        "rounded-xl border-[1.5px] border-dashed px-[18px] py-6 text-center transition-colors",
+        tone === "warn" ? "border-warn bg-warn-soft" : "border-line bg-surface",
         over && !disabled && "border-primary bg-accent",
         disabled && "opacity-60",
       )}
     >
       <span
         className={cn(
-          "mb-3 grid size-10 place-items-center rounded-lg",
+          "mx-auto mb-3 grid size-[38px] place-items-center rounded-[9px]",
           tone === "accent" && "bg-accent text-primary",
-          tone === "default" && "bg-panel text-muted-foreground",
-          tone === "warn" && "bg-card text-warn",
+          tone === "default" && "bg-panel text-ink-2",
+          tone === "warn" && "bg-white text-warn",
         )}
       >
         {icon}
       </span>
-      <div className="text-sm font-semibold">{title}</div>
-      <p className={cn("mt-0.5 mb-3.5 text-xs", tone === "warn" ? "text-warn" : "text-muted-foreground")}>
+      <div className="mb-[3px] text-sm font-semibold text-ink">{title}</div>
+      <p className={cn("mb-3.5 text-xs", tone === "warn" ? "text-warn" : "text-ink-2")}>
         {disabled && disabledReason ? disabledReason : hint}
       </p>
       <input
@@ -116,18 +111,19 @@ export function UploadDropzone({
           e.target.value = ""; // allow re-picking the same file later
         }}
       />
-      <Button
+      <button
         type="button"
-        variant={tone === "accent" ? "secondary" : "outline"}
-        size="sm"
         disabled={disabled}
         onClick={() => inputRef.current?.click()}
-        className={cn(tone === "warn" && "border-warn/50 text-warn hover:bg-card")}
+        className={cn(
+          "rounded-[7px] px-3.5 py-2 text-[12.5px] font-semibold transition-colors focus-visible:ring-3 focus-visible:ring-accent focus-visible:outline-none disabled:pointer-events-none",
+          tone === "accent" && "bg-accent text-primary hover:bg-[#e3e6fd]",
+          tone === "default" && "border border-line bg-panel text-ink-2 hover:text-ink",
+          tone === "warn" && "border border-warn bg-white text-warn",
+        )}
       >
         {multiple ? "Choose files" : "Choose file"}
-      </Button>
-      <p className="mt-2 text-[11px] text-muted-foreground">or drag and drop here</p>
-      {footer && <div className="mt-2 text-xs text-muted-foreground">{footer}</div>}
+      </button>
     </div>
   );
 }

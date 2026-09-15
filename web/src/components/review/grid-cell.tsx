@@ -79,17 +79,15 @@ export function GridCell({ project, col, field, recommended, onChange, onOpenSou
     if (text !== value) onChange(text);
   };
 
+  // Wireframe cell colours: recommended column, then set fields, then
+  // key values still to confirm (and low-confidence values), else plain.
   const tint = recommended
     ? "bg-rec"
     : field.set
-      ? "bg-set-soft/70"
-      : keyConfirmed === true
-        ? "bg-ok-soft/70"
-        : keyConfirmed === false
-          ? "bg-warn-soft/70"
-          : uncertain
-            ? "bg-warn-soft/70"
-            : "";
+      ? "bg-set-soft"
+      : keyConfirmed === false || uncertain
+        ? "bg-warn-soft"
+        : "";
 
   const inputId = cellDomId(col.id, field.key);
   const label = `${field.label} for ${col.name}`;
@@ -110,7 +108,7 @@ export function GridCell({ project, col, field, recommended, onChange, onOpenSou
     const known = options.includes(value);
     const inherited = field.key === "type" && !hasTypeOverride(col);
     return (
-      <td className={cn("border-l border-b border-line-2 p-1.5 align-middle", tint)} data-provenance={provenance}>
+      <td className={cn("border-b border-l border-line-2 p-1.5 align-middle", tint)} data-provenance={provenance}>
         <div className="flex items-center gap-1.5">
           <Select value={known ? value : ""} onValueChange={(v) => v !== null && onChange(String(v))}>
             <SelectTrigger
@@ -139,7 +137,7 @@ export function GridCell({ project, col, field, recommended, onChange, onOpenSou
   }
 
   return (
-    <td className={cn("border-l border-b border-line-2 p-0 align-middle", tint)} data-provenance={provenance}>
+    <td className={cn("border-b border-l border-line-2 p-0 align-middle", tint)} data-provenance={provenance}>
       <div className="flex items-center gap-1.5 px-2 py-1">
         <div className="relative min-w-0 flex-1">
           <input
@@ -154,8 +152,7 @@ export function GridCell({ project, col, field, recommended, onChange, onOpenSou
             placeholder={provenance === "blank" ? "—" : undefined}
             data-provenance={provenance}
             className={cn(
-              "w-full rounded-md bg-transparent px-1.5 py-1 text-[13px] text-foreground outline-none placeholder:text-ink-3 focus:bg-card focus:ring-2 focus:ring-primary",
-              provenance === "blank" && "border border-dashed border-ink-3/60",
+              "w-full rounded-md bg-transparent px-1.5 py-1.5 text-[13px] text-ink outline-none placeholder:text-ink-3 focus:bg-white focus:ring-2 focus:ring-primary",
               provenance === "edited" && "pl-4",
             )}
           />
@@ -204,7 +201,7 @@ export function GridCell({ project, col, field, recommended, onChange, onOpenSou
             type="button"
             onClick={() => onOpenSource(page)}
             title={`Open source page ${page}`}
-            className="label-mono shrink-0 text-primary opacity-75 hover:underline hover:opacity-100"
+            className="shrink-0 font-mono text-[10px] font-medium text-primary opacity-75 hover:underline hover:opacity-100"
           >
             p{page}
           </button>

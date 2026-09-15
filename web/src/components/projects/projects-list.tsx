@@ -1,29 +1,21 @@
 "use client";
 
-import { FolderKanban, Plus, Search, X } from "lucide-react";
+import { FolderKanban, Plus, Search } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
-import { PageHeader } from "@/components/layout/page-header";
-import { ProjectsTable, type SortDir, type SortKey } from "@/components/projects/projects-table";
+import { ProjectsTable } from "@/components/projects/projects-table";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { errorMessage, projectsApi, type ExportFormat, type ProjectState } from "@/lib/api";
 import { saveBlob } from "@/lib/download";
 import { routes } from "@/lib/navigation";
 import {
-  PROJECT_STATUSES,
-  PROJECT_STATUS_META,
   closeProject,
-  isClosed,
   newProjectState,
-  projectStatus,
   reopenProject,
   updatedTimestamp,
-  type ProjectStatus,
   type ProjectTypeFilter,
 } from "@/lib/projects";
 import { cn } from "@/lib/utils";
@@ -34,27 +26,11 @@ const TYPE_FILTERS: { value: ProjectTypeFilter; label: string }[] = [
   { value: "renewal", label: "Renewal" },
 ];
 
-type StatusFilter = "all" | ProjectStatus;
-
-function compare(a: ProjectState, b: ProjectState, key: SortKey): number {
-  switch (key) {
-    case "client":
-      return (a.clientName || "").localeCompare(b.clientName || "", undefined, {
-        sensitivity: "base",
-      });
-    case "status":
-      return PROJECT_STATUSES.indexOf(projectStatus(a)) - PROJECT_STATUSES.indexOf(projectStatus(b));
-    case "updated":
-    default:
-      return updatedTimestamp(a) - updatedTimestamp(b);
-  }
-}
-
 /**
- * S2 — Project list. Search by client name, type and status filters, a
- * sortable table with status indicators, download links for generated
- * reports, and close/reopen. Existing projects open on the review screen
- * (S5); a new project starts at setup (S3).
+ * S2 — Projects (wireframe): title, "New project", a client-name search
+ * with All / New business / Renewal chips, and the project rows, most
+ * recently updated first. An existing project reopens on its review
+ * screen; a new one starts at setup.
  */
 export function ProjectsList() {
   const router = useRouter();
@@ -63,8 +39,6 @@ export function ProjectsList() {
   const [attempt, setAttempt] = useState(0);
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<ProjectTypeFilter>("all");
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
-  const [sort, setSort] = useState<{ key: SortKey; dir: SortDir }>({ key: "updated", dir: "desc" });
   const [creating, setCreating] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [busyFormat, setBusyFormat] = useState<ExportFormat | null>(null);
@@ -93,31 +67,15 @@ export function ProjectsList() {
   const visible = useMemo(() => {
     if (!projects) return [];
     const q = search.trim().toLowerCase();
-    const filtered = projects.filter((p) => {
-      if (q && !String(p.clientName ?? "").toLowerCase().includes(q)
-        && !String(p.ref ?? "").toLowerCase().includes(q)) return false;
-      if (typeFilter === "renewal" && p.projectType !== "renewal") return false;
-      if (typeFilter === "new" && p.projectType === "renewal") return false;
-      if (statusFilter !== "all" && projectStatus(p) !== statusFilter) return false;
-      return true;
-    });
-    const dir = sort.dir === "asc" ? 1 : -1;
-    return [...filtered].sort((a, b) => compare(a, b, sort.key) * dir || updatedTimestamp(b) - updatedTimestamp(a));
-  }, [projects, search, typeFilter, statusFilter, sort]);
-
-  const counts = useMemo(() => {
-    const c: Record<StatusFilter, number> = { all: 0, draft: 0, ready: 0, sent: 0, closed: 0 };
-    for (const p of projects ?? []) {
-      c.all += 1;
-      c[projectStatus(p)] += 1;
-    }
-    return c;
-  }, [projects]);
-
-  const onSort = (key: SortKey) =>
-    setSort((s) =>
-      s.key === key ? { key, dir: s.dir === "asc" ? "desc" : "asc" } : { key, dir: key === "updated" ? "desc" : "asc" },
-    );
+    return projects
+      .filter((p) => {
+        if (q && !String(p.clientName ?? "").toLowerCase().includes(q) && !String(p.ref ?? "").toLowerCase().includes(q)) return false;
+        if (typeFilter === "renewal" && p.projectType !== "renewal") return false;
+        if (typeFilter === "new" && p.projectType === "renewal") return false;
+        return true;
+      })
+      .sort((a, b) => updatedTimestamp(b) - updatedTimestamp(a));
+  }, [projects, search, typeFilter]);
 
   const replaceProject = useCallback((next: ProjectState) => {
     setProjects((list) => (list ? list.map((p) => (p.id === next.id ? next : p)) : list));
@@ -158,8 +116,7 @@ export function ProjectsList() {
     if (await persist(next, `${p.clientName || "Project"} reopened`)) openProject(next);
   };
 
-  const close = (p: ProjectState) =>
-    persist(closeProject(p), `${p.clientName || "Project"} closed`);
+  const close = (p: ProjectState) => persist(closeProject(p), `${p.clientName || "Project"} closed`);
 
   const download = async (p: ProjectState, format: ExportFormat) => {
     setBusyId(p.id);
@@ -175,91 +132,61 @@ export function ProjectsList() {
     }
   };
 
-  const filtering = Boolean(search.trim()) || typeFilter !== "all" || statusFilter !== "all";
+  const filtering = Boolean(search.trim()) || typeFilter !== "all";
 
   return (
     <>
-      <PageHeader
-        title="Projects"
-        description="Client comparisons prepared on this desk. Open a project to return to its review screen."
-        actions={
-          <Button onClick={createProject} disabled={creating}>
-            <Plus data-icon="inline-start" />
-            New project
-          </Button>
-        }
-      />
+      <div className="mb-[22px] flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h1 className="mb-1.5 text-[27px] font-bold tracking-[-0.5px] text-ink">Projects</h1>
+          <p className="text-[13.5px] text-ink-2">Client comparisons prepared on this desk.</p>
+        </div>
+        <Button onClick={createProject} disabled={creating} className="h-10 px-4">
+          <Plus className="size-[15px]" strokeWidth={2.4} />
+          New project
+        </Button>
+      </div>
 
-      {/* Search + filters (wireframe: search by client name, All / New business / Renewal) */}
-      <div className="flex flex-col gap-3 md:flex-row md:items-center">
-        <div className="relative flex-1">
-          <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
+      <div className="mb-4 flex flex-col gap-2.5 sm:flex-row">
+        <label className="flex flex-1 items-center gap-[9px] rounded-[9px] border border-line bg-surface px-[13px] py-[9px] focus-within:border-primary focus-within:ring-3 focus-within:ring-accent">
+          <Search className="size-4 shrink-0 text-ink-3" aria-hidden />
+          <input
             placeholder="Search by client name"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="pr-9 pl-9"
             aria-label="Search projects by client name"
+            className="w-full min-w-0 bg-transparent text-[13.5px] text-ink outline-none placeholder:text-ink-3"
           />
-          {search && (
-            <button
-              type="button"
-              onClick={() => setSearch("")}
-              aria-label="Clear search"
-              className="absolute top-1/2 right-2 grid size-6 -translate-y-1/2 place-items-center rounded text-muted-foreground hover:text-foreground"
-            >
-              <X className="size-3.5" />
-            </button>
-          )}
-        </div>
-        <div className="flex flex-wrap gap-1.5" role="group" aria-label="Filter by type">
+        </label>
+        <div className="flex gap-1.5" role="group" aria-label="Filter by type">
           {TYPE_FILTERS.map((f) => (
-            <Button
+            <button
               key={f.value}
-              variant={typeFilter === f.value ? "secondary" : "outline"}
-              size="sm"
+              type="button"
               aria-pressed={typeFilter === f.value}
               onClick={() => setTypeFilter(f.value)}
+              className={cn(
+                "rounded-[9px] border border-line bg-surface px-[13px] py-[9px] text-[12.5px] transition-colors hover:text-ink",
+                typeFilter === f.value ? "font-medium text-ink" : "text-ink-2",
+              )}
             >
               {f.label}
-            </Button>
+            </button>
           ))}
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Filter by status">
-        {(["all", ...PROJECT_STATUSES] as StatusFilter[]).map((s) => (
-          <button
-            key={s}
-            type="button"
-            aria-pressed={statusFilter === s}
-            onClick={() => setStatusFilter(s)}
-            className={cn(
-              "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors",
-              statusFilter === s
-                ? "border-primary bg-accent text-accent-foreground"
-                : "border-border bg-card text-muted-foreground hover:text-foreground",
-            )}
-          >
-            {s === "all" ? "All statuses" : PROJECT_STATUS_META[s].label}
-            <span className="label-mono">{counts[s]}</span>
-          </button>
-        ))}
-      </div>
-
       {error && (
-        <Card>
-          <CardContent className="flex items-center justify-between gap-4 py-4">
-            <p className="text-sm text-destructive">{error}</p>
-            <Button variant="outline" onClick={retry}>
-              Retry
-            </Button>
-          </CardContent>
-        </Card>
+        <div className="flex items-center justify-between gap-4 rounded-[14px] border border-line bg-surface px-5 py-4 shadow-card">
+          <p className="text-sm text-destructive">{error}</p>
+          <Button variant="outline" size="sm" onClick={retry}>
+            Retry
+          </Button>
+        </div>
       )}
 
       {!error && projects === null && (
-        <div className="space-y-2 rounded-xl border bg-card p-4">
+        <div className="space-y-2 rounded-[14px] border border-line bg-surface p-4 shadow-card">
           {Array.from({ length: 4 }).map((_, i) => (
             <Skeleton key={i} className="h-11 w-full" />
           ))}
@@ -267,58 +194,46 @@ export function ProjectsList() {
       )}
 
       {projects && !visible.length && (
-        <Card className="border-dashed">
-          <CardContent className="flex flex-col items-center gap-3 py-12 text-center">
-            <span className="grid size-12 place-items-center rounded-xl bg-accent text-accent-foreground">
-              <FolderKanban className="size-6" />
-            </span>
-            <div className="space-y-1">
-              <p className="font-medium">{filtering ? "No projects match" : "No projects yet"}</p>
-              <p className="text-sm text-muted-foreground">
-                {filtering
-                  ? "Try a different client name or clear the filters."
-                  : "Create your first comparison to get started."}
-              </p>
-            </div>
-            {filtering ? (
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setSearch("");
-                  setTypeFilter("all");
-                  setStatusFilter("all");
-                }}
-              >
-                Clear filters
-              </Button>
-            ) : (
-              <Button onClick={createProject} disabled={creating}>
-                <Plus data-icon="inline-start" />
-                New project
-              </Button>
-            )}
-          </CardContent>
-        </Card>
+        <div className="flex flex-col items-center gap-3 rounded-[14px] border border-dashed border-line bg-surface px-6 py-12 text-center">
+          <span className="grid size-12 place-items-center rounded-xl bg-accent text-primary">
+            <FolderKanban className="size-6" />
+          </span>
+          <div className="space-y-1">
+            <p className="font-medium text-ink">{filtering ? "No projects match" : "No projects yet"}</p>
+            <p className="text-sm text-ink-2">
+              {filtering ? "Try a different client name or clear the filters." : "Create your first comparison to get started."}
+            </p>
+          </div>
+          {filtering ? (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setSearch("");
+                setTypeFilter("all");
+              }}
+            >
+              Clear filters
+            </Button>
+          ) : (
+            <Button onClick={createProject} disabled={creating} className="h-10 px-4">
+              <Plus className="size-[15px]" strokeWidth={2.4} />
+              New project
+            </Button>
+          )}
+        </div>
       )}
 
       {visible.length > 0 && (
-        <>
-          <ProjectsTable
-            projects={visible}
-            sort={sort}
-            onSort={onSort}
-            busyId={busyId}
-            busyFormat={busyFormat}
-            onOpen={openProject}
-            onReopen={reopen}
-            onClose={close}
-            onDownload={download}
-          />
-          <p className="text-xs text-muted-foreground">
-            {visible.length} of {projects?.length ?? 0} projects
-            {visible.some(isClosed) && " · closed projects can be reopened from the row menu"}
-          </p>
-        </>
+        <ProjectsTable
+          projects={visible}
+          busyId={busyId}
+          busyFormat={busyFormat}
+          onOpen={openProject}
+          onReopen={reopen}
+          onClose={close}
+          onDownload={download}
+        />
       )}
     </>
   );

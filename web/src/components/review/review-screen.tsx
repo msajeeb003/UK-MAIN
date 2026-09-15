@@ -1,27 +1,25 @@
 "use client";
 
-import { ArrowRight, Check, CloudOff, Expand, LoaderCircle, PanelRightClose, PanelRightOpen, Plus } from "lucide-react";
+import { Check, CloudOff, Expand, LoaderCircle, PanelRightClose, PanelRightOpen, Plus } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-import { PageHeader } from "@/components/layout/page-header";
 import { ProjectScreen } from "@/components/projects/project-screen";
 import { ComparisonGrid } from "@/components/review/comparison-grid";
 import { ConfirmBar } from "@/components/review/confirm-bar";
 import { SourcePageDialog } from "@/components/review/source-page-dialog";
 import { SourceViewer, type SourceRef } from "@/components/review/source-viewer";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { useInsurers } from "@/hooks/use-insurers";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useReviewDraft, type SaveState } from "@/hooks/use-review-draft";
 import type { ProjectState } from "@/lib/api/types";
 import type { FieldDef } from "@/lib/fields";
-import { PROJECT_STEPS, routes } from "@/lib/navigation";
+import { routes } from "@/lib/navigation";
+import { setRecommended } from "@/lib/recommend";
 import {
-  CONFIRM_KEYS,
   addManualColumn,
   confirmedFlags,
   isReviewed,
@@ -37,11 +35,11 @@ import {
 import type { ProjectColumn } from "@/lib/uploads";
 import { cn } from "@/lib/utils";
 
-function SaveIndicator({ state }: { state: SaveState }) {
+export function SaveIndicator({ state }: { state: SaveState }) {
   const map: Record<SaveState, { label: string; className: string; Icon?: typeof Check }> = {
     idle: { label: "", className: "" },
-    dirty: { label: "Unsaved edits", className: "text-muted-foreground" },
-    saving: { label: "Saving…", className: "text-muted-foreground", Icon: LoaderCircle },
+    dirty: { label: "Unsaved edits", className: "text-ink-3" },
+    saving: { label: "Saving…", className: "text-ink-3", Icon: LoaderCircle },
     saved: { label: "Saved", className: "text-ok", Icon: Check },
     error: { label: "Not saved", className: "text-destructive", Icon: CloudOff },
   };
@@ -55,14 +53,11 @@ function SaveIndicator({ state }: { state: SaveState }) {
   );
 }
 
+/** The wireframe's three-swatch legend. */
 const LEGEND = [
-  { swatch: "border-set bg-set-soft", label: "Set field (setup / insurer rule)" },
-  { swatch: "border-border bg-card", label: "Extracted by AI" },
-  { swatch: "border-primary bg-card", label: "Edited by broker", dot: true },
-  { swatch: "border-warn bg-warn-soft", label: "Low confidence / confirm before export" },
-  { swatch: "border-ok bg-ok-soft", label: "Confirmed" },
-  { swatch: "border-dashed border-ink-3 bg-card", label: "Blank (—) vs zero (0 / Nil)" },
-  { swatch: "border-border bg-muted", label: "Declined to quote" },
+  { swatch: "border-set bg-set-soft", label: "Set field" },
+  { swatch: "border-warn bg-warn-soft", label: "Confirm before export" },
+  { swatch: "border-primary bg-rec", label: "Recommended" },
 ];
 
 function ReviewBody({ project }: { project: ProjectState }) {
@@ -107,6 +102,7 @@ function ReviewBody({ project }: { project: ProjectState }) {
   };
 
   const showPanel = panelOpen && !isMobile;
+  const hasGrid = columns.length > 0 || (Array.isArray(p.approached) && p.approached.length > 0);
 
   const proceed = async () => {
     await flush();
@@ -114,47 +110,45 @@ function ReviewBody({ project }: { project: ProjectState }) {
   };
 
   return (
-    <div className="space-y-5">
-      <PageHeader
-        eyebrow={`Step 3 of ${PROJECT_STEPS.length}`}
-        title="Review and edit"
-        description="Same shape as the presentation slide, pre-populated. Every cell is editable, extracted or set. Enter moves down a row, Tab moves across."
-        actions={<SaveIndicator state={saveState} />}
-      />
-
-      <ConfirmBar
-        flags={flags}
-        disabled={columns.length === 0}
-        onToggle={(k) => commit((s) => toggleConfirm(s, k))}
-        onConfirmAll={() => commit((s) => CONFIRM_KEYS.reduce((acc, k) => toggleConfirm(acc, k, true), s))}
-      />
-
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <ul className="flex flex-wrap gap-x-4 gap-y-1 text-[11.5px] text-muted-foreground" aria-label="Legend">
+    <div>
+      <div className="mb-1.5 flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h1 className="mb-1.5 text-[26px] font-bold tracking-[-0.4px] text-ink">Review &amp; edit</h1>
+          <p className="text-[13.5px] text-ink-2">Same shape as the presentation slide, pre-populated. Every cell is editable.</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-4 text-[11.5px] text-ink-2">
+          <SaveIndicator state={saveState} />
           {LEGEND.map((l) => (
-            <li key={l.label} className="flex items-center gap-1.5">
-              <span className={cn("relative size-3 rounded-[3px] border", l.swatch)}>
-                {l.dot && <span className="absolute top-1/2 left-1/2 size-1 -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary" />}
-              </span>
+            <span key={l.label} className="flex items-center gap-1.5">
+              <span aria-hidden className={cn("size-[11px] rounded-[3px] border", l.swatch)} />
               {l.label}
-            </li>
+            </span>
           ))}
-        </ul>
-        <div className="flex items-center gap-2">
+        </div>
+      </div>
+
+      <ConfirmBar flags={flags} disabled={columns.length === 0} onToggle={(k) => commit((s) => toggleConfirm(s, k))} />
+
+      <div className="mb-2.5 flex flex-wrap items-center justify-between gap-3">
+        <span className="text-[12.5px] text-ink-2">
+          {columns.length} comparison column{columns.length === 1 ? "" : "s"} — one per quote. Add a free-format column for a second
+          quote from the same insurer or terms agreed offline.
+        </span>
+        <div className="flex shrink-0 items-center gap-2">
           {!isMobile && !panelOpen && (
             <Button variant="outline" size="sm" onClick={() => setPanelOpen(true)}>
-              <PanelRightOpen data-icon="inline-start" />
+              <PanelRightOpen />
               Show source
             </Button>
           )}
           <Button variant="secondary" size="sm" onClick={() => commit(addManualColumn)}>
-            <Plus data-icon="inline-start" />
-            Add free-format column
+            <Plus className="size-[15px]" strokeWidth={2.4} />
+            Add comparison column
           </Button>
         </div>
       </div>
 
-      {columns.length || (Array.isArray(p.approached) && p.approached.length) ? (
+      {hasGrid ? (
         <div className={cn("flex items-start gap-4", showPanel && "xl:grid xl:grid-cols-[minmax(0,1fr)_380px]")}>
           <div className="min-w-0 flex-1">
             <ComparisonGrid
@@ -163,18 +157,18 @@ function ReviewBody({ project }: { project: ProjectState }) {
               onCell={(colId, field, value) => commit((s) => setCell(s, colId, field, value))}
               onRename={(colId, name) => commit((s) => setColumnName(s, colId, name))}
               onRemove={(colId) => commit((s) => removeColumn(s, colId))}
-              onToggleConfirm={(k) => commit((s) => toggleConfirm(s, k))}
+              onPickRecommended={(colId) => commit((s) => setRecommended(s, colId))}
               onOpenSource={openSource}
               onSelectCell={selectCell}
             />
           </div>
           {showPanel && (
             <aside
-              className="sticky top-16 hidden h-[70vh] min-h-0 flex-col overflow-hidden rounded-xl border bg-card shadow-card xl:flex"
+              className="sticky top-[76px] hidden h-[70vh] min-h-0 flex-col overflow-hidden rounded-[14px] border border-line bg-surface shadow-card xl:flex"
               aria-label="Source document"
             >
-              <div className="flex items-center justify-between border-b px-3 py-1.5">
-                <span className="label-mono">Source</span>
+              <div className="flex items-center justify-between border-b border-line px-3 py-1.5">
+                <span className="text-sm font-semibold text-ink">Source document</span>
                 <div className="flex items-center gap-0.5">
                   <Button variant="ghost" size="icon-xs" aria-label="Expand source viewer" disabled={!source} onClick={() => setExpanded(true)}>
                     <Expand />
@@ -189,21 +183,14 @@ function ReviewBody({ project }: { project: ProjectState }) {
           )}
         </div>
       ) : (
-        <div className="rounded-xl border border-dashed bg-card px-6 py-12 text-center text-sm text-muted-foreground">
-          No comparison columns yet. Upload quotes on the previous step, or add a free-format column for terms
-          agreed offline.
+        <div className="rounded-[14px] border border-dashed border-line bg-surface px-6 py-12 text-center text-sm text-ink-2">
+          No comparison columns yet. Upload quotes on the previous step, or add a free-format column for terms agreed offline.
         </div>
       )}
 
-      <p className="text-xs text-muted-foreground">
-        {columns.length} comparison column{columns.length === 1 ? "" : "s"}, one per quote, in the order ticked at
-        setup. A ticked insurer with no quote shows as declined. A second quote from the same insurer, or terms
-        agreed offline, go in a free-format column.
-      </p>
-
-      <div className="rounded-xl border bg-card p-4 shadow-card">
-        <label htmlFor="review-notes" className="mb-2 block text-sm font-semibold">
-          Free-format notes <span className="font-normal text-muted-foreground">(appears beneath the comparison)</span>
+      <div className="mt-4 rounded-[14px] border border-line bg-surface px-[18px] py-4 shadow-card">
+        <label htmlFor="review-notes" className="mb-2 block text-[12.5px] font-semibold text-ink-2">
+          Free-format notes <span className="font-normal text-ink-3">— appears beneath the comparison</span>
         </label>
         <Textarea
           id="review-notes"
@@ -212,39 +199,37 @@ function ReviewBody({ project }: { project: ProjectState }) {
             const v = e.target.value;
             if (v !== (p.notes ?? "")) commit((s) => setNotes(s, v));
           }}
-          className="min-h-20"
+          className="min-h-16"
         />
       </div>
 
-      {/* Review gate: ticked by the broker, cleared automatically by any grid change. */}
-      <div
-        className={cn(
-          "flex flex-col gap-3 rounded-xl border px-4 py-3 sm:flex-row sm:items-center sm:justify-between",
-          reviewed ? "border-ok/40 bg-ok-soft" : "border-border bg-card",
-        )}
-      >
-        <label className="flex cursor-pointer items-start gap-3 text-sm">
-          <Checkbox
-            id="reviewed-all"
-            checked={reviewed}
-            disabled={columns.length === 0}
-            onCheckedChange={(on) => commit((s) => setReviewed(s, Boolean(on)))}
-            className="mt-0.5"
-          />
-          <span>
-            <span className="font-medium">I&apos;ve reviewed all columns</span>
-            <span className="block text-xs text-muted-foreground">
-              Required to continue. Any change to the grid clears this tick, so re-check after editing.
+      <div className="mt-[22px] flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <Button variant="outline" nativeButton={false} render={<Link href={routes.projectStep(p.id, "upload")} />}>
+          ← Back
+        </Button>
+        <div className="flex flex-wrap items-center justify-end gap-4">
+          {/* Review gate: ticked by the broker, cleared automatically by any grid change. */}
+          <label className="flex cursor-pointer items-center gap-2 text-[13px] text-ink-2">
+            <input
+              type="checkbox"
+              className="sr-only"
+              checked={reviewed}
+              disabled={columns.length === 0}
+              onChange={(e) => commit((s) => setReviewed(s, e.target.checked))}
+            />
+            <span
+              aria-hidden
+              className={cn(
+                "grid size-[18px] place-items-center rounded-[5px] border-[1.5px] text-[11px] font-bold text-white",
+                reviewed ? "border-ok bg-ok" : "border-[#c5cdd8] bg-white",
+              )}
+            >
+              {reviewed ? "✓" : ""}
             </span>
-          </span>
-        </label>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" nativeButton={false} render={<Link href={routes.projectStep(p.id, "upload")} />}>
-            Back to upload
-          </Button>
+            I’ve reviewed all columns
+          </label>
           <Button onClick={proceed} disabled={!reviewed || columns.length === 0}>
-            Continue to credit limits
-            <ArrowRight data-icon="inline-end" />
+            Credit limits →
           </Button>
         </div>
       </div>
@@ -254,7 +239,7 @@ function ReviewBody({ project }: { project: ProjectState }) {
   );
 }
 
-/** S5 — Review and edit. Client boundary for the page. */
+/** S5 — Review & edit. Client boundary for the page. */
 export function ReviewScreen() {
   return <ProjectScreen>{(project) => <ReviewBody key={project.id} project={project} />}</ProjectScreen>;
 }

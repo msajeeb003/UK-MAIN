@@ -1,42 +1,25 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { ArrowRight, CircleAlert, LoaderCircle, TriangleAlert } from "lucide-react";
+import { CircleAlert, LoaderCircle } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { Controller, useForm, useWatch } from "react-hook-form";
 import { toast } from "sonner";
 
-import { PageHeader } from "@/components/layout/page-header";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
-import {
-  Field,
-  FieldContent,
-  FieldDescription,
-  FieldError,
-  FieldGroup,
-  FieldLabel,
-  FieldLegend,
-  FieldSet,
-  FieldTitle,
-} from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useInsurers } from "@/hooks/use-insurers";
 import { useProject } from "@/hooks/use-project";
 import { errorMessage, type ProjectState } from "@/lib/api";
-import { PROJECT_STEPS, routes } from "@/lib/navigation";
+import { routes } from "@/lib/navigation";
 import {
   POLICY_TYPES,
   POLICY_TYPE_HINTS,
   PROJECT_TYPES,
-  PROJECT_TYPE_META,
   applySetup,
   setupDefaults,
   setupSchema,
@@ -48,10 +31,28 @@ interface SetupFormProps {
   project: ProjectState;
 }
 
+/** Wireframe copy for the two project-type cards. */
+const TYPE_CARDS: Record<(typeof PROJECT_TYPES)[number], { title: string; hint: string }> = {
+  new: { title: "New business", hint: "Front page: “Credit Insurance Proposals”" },
+  renewal: { title: "Renewal", hint: "Compares against the expiring policy" },
+};
+
+const LABEL = "mb-1.5 block text-[12.5px] font-medium text-ink-2";
+
+function ErrorText({ message, id }: { message?: string; id: string }) {
+  if (!message) return null;
+  return (
+    <p id={id} role="alert" className="mt-1.5 text-xs text-destructive">
+      {message}
+    </p>
+  );
+}
+
 /**
- * S3 — New project / setup (BRD 2.1). React Hook Form + zod; every field
- * validates on blur and again on submit, and the first invalid field is
- * focused. Saving writes the whole project state back and moves to Upload.
+ * S3 — New project (wireframe): client and reference, the project-type
+ * cards, the policy-type chips and the insurers-approached tick list.
+ * React Hook Form + zod; validates on blur and on submit. Saving writes
+ * the project back and moves to Upload.
  */
 export function SetupForm({ project }: SetupFormProps) {
   const router = useRouter();
@@ -98,252 +99,219 @@ export function SetupForm({ project }: SetupFormProps) {
     const next = on ? [...new Set([...approached, id])] : approached.filter((x) => x !== id);
     setValue("approached", next, { shouldDirty: true, shouldValidate: true });
   };
+  const approachedError = (errors.approached as { message?: string } | undefined)?.message;
 
   return (
-    <form onSubmit={onSubmit} noValidate className="space-y-6">
-      <PageHeader
-        eyebrow={`Step 1 of ${PROJECT_STEPS.length}`}
-        title={project.clientName ? project.clientName : "New project"}
-        description="Set up the client and choose which insurers were approached."
-      />
+    <form onSubmit={onSubmit} noValidate>
+      <h1 className="mb-1.5 text-[26px] font-bold tracking-[-0.4px] text-ink">
+        {project.clientName ? "Project setup" : "New project"}
+      </h1>
+      <p className="mb-[26px] text-[13.5px] text-ink-2">Set up the client and choose which insurers were approached.</p>
 
       {(submitError || errorCount > 0) && (
-        <Alert variant="destructive" role="alert">
+        <Alert variant="destructive" role="alert" className="mb-5">
           <CircleAlert />
           <AlertTitle>{submitError ? "Could not save" : "Check the highlighted fields"}</AlertTitle>
           <AlertDescription>
-            {submitError ??
-              `${errorCount} ${errorCount === 1 ? "field needs" : "fields need"} attention before you continue.`}
+            {submitError ?? `${errorCount} ${errorCount === 1 ? "field needs" : "fields need"} attention before you continue.`}
           </AlertDescription>
         </Alert>
       )}
 
-      <div className="grid items-start gap-6 lg:grid-cols-[1.35fr_1fr]">
+      <div className="grid items-start gap-5 lg:grid-cols-[1.35fr_1fr]">
         {/* ── Client, type, policy ─────────────────────────────────── */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Client project</CardTitle>
-            <CardDescription>Client name and reference, and whether this is new business or a renewal.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <FieldGroup>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <Field data-invalid={Boolean(errors.clientName) || undefined}>
-                  <FieldLabel htmlFor="clientName">Client name</FieldLabel>
-                  <Input
-                    id="clientName"
-                    placeholder="e.g. Aldgate Timber Ltd"
-                    autoComplete="organization"
-                    aria-invalid={Boolean(errors.clientName)}
-                    {...register("clientName")}
-                  />
-                  <FieldError errors={[errors.clientName]} />
-                </Field>
-                <Field data-invalid={Boolean(errors.ref) || undefined}>
-                  <FieldLabel htmlFor="ref">Reference</FieldLabel>
-                  <Input
-                    id="ref"
-                    placeholder="e.g. UKCIB-2418"
-                    className="font-mono"
-                    autoCapitalize="characters"
-                    spellCheck={false}
-                    aria-invalid={Boolean(errors.ref)}
-                    {...register("ref")}
-                  />
-                  <FieldError errors={[errors.ref]} />
-                </Field>
+        <section className="rounded-[14px] border border-line bg-surface p-[26px] shadow-card">
+          <div className="mb-6 grid gap-[18px] sm:grid-cols-2">
+            <div>
+              <label htmlFor="clientName" className={LABEL}>
+                Client name
+              </label>
+              <Input
+                id="clientName"
+                placeholder="e.g. Aldgate Timber Ltd"
+                autoComplete="organization"
+                aria-invalid={Boolean(errors.clientName)}
+                aria-describedby={errors.clientName ? "clientName-error" : undefined}
+                {...register("clientName")}
+              />
+              <ErrorText id="clientName-error" message={errors.clientName?.message} />
+            </div>
+            <div>
+              <label htmlFor="ref" className={LABEL}>
+                Reference
+              </label>
+              <Input
+                id="ref"
+                placeholder="e.g. UKCIB-2418"
+                className="font-mono"
+                autoCapitalize="characters"
+                spellCheck={false}
+                aria-invalid={Boolean(errors.ref)}
+                aria-describedby={errors.ref ? "ref-error" : undefined}
+                {...register("ref")}
+              />
+              <ErrorText id="ref-error" message={errors.ref?.message} />
+            </div>
+          </div>
+
+          <Controller
+            control={control}
+            name="projectType"
+            render={({ field }) => (
+              <div role="radiogroup" aria-label="Project type" onBlur={field.onBlur} className={cn(projectType === "renewal" ? "mb-[18px]" : "mb-6")}>
+                <span className="mb-2 block text-[12.5px] font-medium text-ink-2">Project type</span>
+                <div className="flex flex-col gap-2.5 sm:flex-row">
+                  {PROJECT_TYPES.map((t) => {
+                    const on = field.value === t;
+                    return (
+                      <button
+                        key={t}
+                        type="button"
+                        role="radio"
+                        aria-checked={on}
+                        onClick={() => field.onChange(t)}
+                        className={cn(
+                          "flex-1 rounded-[10px] border-[1.5px] px-4 py-3.5 text-left transition-colors",
+                          on ? "border-primary bg-accent" : "border-line bg-surface hover:border-ink-3",
+                        )}
+                      >
+                        <div className="mb-0.5 text-sm font-semibold text-ink">{TYPE_CARDS[t].title}</div>
+                        <div className="text-xs text-ink-2">{TYPE_CARDS[t].hint}</div>
+                      </button>
+                    );
+                  })}
+                </div>
+                <ErrorText id="projectType-error" message={errors.projectType?.message} />
               </div>
+            )}
+          />
 
-              <Controller
-                control={control}
-                name="projectType"
-                render={({ field }) => (
-                  <FieldSet data-invalid={Boolean(errors.projectType) || undefined}>
-                    <FieldLegend>Project type</FieldLegend>
-                    <FieldDescription>Sets the front-page title of the presentation.</FieldDescription>
-                    <RadioGroup
-                      value={field.value}
-                      onValueChange={(v) => field.onChange(v)}
-                      onBlur={field.onBlur}
-                      aria-invalid={Boolean(errors.projectType)}
-                      className="grid gap-3 sm:grid-cols-2"
-                    >
-                      {PROJECT_TYPES.map((t) => (
-                        <FieldLabel key={t} htmlFor={`projectType-${t}`}>
-                          <Field orientation="horizontal">
-                            <FieldContent>
-                              <FieldTitle>{PROJECT_TYPE_META[t].label}</FieldTitle>
-                              <FieldDescription>{PROJECT_TYPE_META[t].hint}</FieldDescription>
-                            </FieldContent>
-                            <RadioGroupItem value={t} id={`projectType-${t}`} aria-label={PROJECT_TYPE_META[t].label} />
-                          </Field>
-                        </FieldLabel>
-                      ))}
-                    </RadioGroup>
-                    <FieldError errors={[errors.projectType]} />
-                  </FieldSet>
-                )}
-              />
+          {projectType === "renewal" && (
+            <p className="mb-6 rounded-[7px] bg-warn-soft px-3 py-[9px] text-[12.5px] text-warn">
+              Renewal selected — the expiring policy must be uploaded on the next step as the comparison baseline.
+            </p>
+          )}
 
-              {projectType === "renewal" && (
-                <Alert className="border-warn/30 bg-warn-soft text-warn [&>svg]:text-warn">
-                  <TriangleAlert />
-                  <AlertDescription className="text-warn">
-                    Renewal selected: the expiring policy must be uploaded on the next step as the
-                    comparison baseline.
-                  </AlertDescription>
-                </Alert>
-              )}
-
-              <Controller
-                control={control}
-                name="policyType"
-                render={({ field }) => (
-                  <FieldSet data-invalid={Boolean(errors.policyType) || undefined}>
-                    <FieldLegend>Policy type</FieldLegend>
-                    <FieldDescription>
-                      Applies to every insurer column; can be overridden per insurer at review.
-                    </FieldDescription>
-                    <RadioGroup
-                      value={field.value}
-                      onValueChange={(v) => field.onChange(v)}
-                      onBlur={field.onBlur}
-                      aria-invalid={Boolean(errors.policyType)}
-                      className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"
-                    >
-                      {POLICY_TYPES.map((pt) => (
-                        <FieldLabel key={pt} htmlFor={`policyType-${pt}`}>
-                          <Field orientation="horizontal">
-                            <FieldContent>
-                              <FieldTitle>{pt}</FieldTitle>
-                              <FieldDescription className="text-xs">{POLICY_TYPE_HINTS[pt]}</FieldDescription>
-                            </FieldContent>
-                            <RadioGroupItem value={pt} id={`policyType-${pt}`} aria-label={pt} />
-                          </Field>
-                        </FieldLabel>
-                      ))}
-                    </RadioGroup>
-                    <FieldError errors={[errors.policyType]} />
-                  </FieldSet>
-                )}
-              />
-            </FieldGroup>
-          </CardContent>
-        </Card>
+          <Controller
+            control={control}
+            name="policyType"
+            render={({ field }) => (
+              <div role="radiogroup" aria-label="Policy type" onBlur={field.onBlur}>
+                <span className="mb-2 block text-[12.5px] font-medium text-ink-2">
+                  Policy type <span className="font-normal text-ink-3">— applies to every insurer column, overridable at review</span>
+                </span>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  {POLICY_TYPES.map((pt) => {
+                    const on = field.value === pt;
+                    return (
+                      <button
+                        key={pt}
+                        type="button"
+                        role="radio"
+                        aria-checked={on}
+                        title={POLICY_TYPE_HINTS[pt]}
+                        onClick={() => field.onChange(pt)}
+                        className={cn(
+                          "rounded-[9px] border-[1.5px] px-2 py-[11px] text-center text-[13px] transition-colors",
+                          on ? "border-primary bg-accent font-semibold text-primary" : "border-line bg-surface font-medium text-ink-2 hover:border-ink-3",
+                        )}
+                      >
+                        {pt}
+                      </button>
+                    );
+                  })}
+                </div>
+                <ErrorText id="policyType-error" message={errors.policyType?.message} />
+              </div>
+            )}
+          />
+        </section>
 
         {/* ── Insurers approached ──────────────────────────────────── */}
-        <Card>
-          <CardHeader>
-            <div className="flex items-start justify-between gap-3">
-              <div className="space-y-1.5">
-                <CardTitle>Insurers approached</CardTitle>
-                <CardDescription>
-                  From the standing list. Ticked insurers with no quote uploaded are named as
-                  declined on the presentation.
-                </CardDescription>
-              </div>
-              <Badge variant="secondary" className="shrink-0 font-mono">
-                {approached.length} of {insurers.length}
-              </Badge>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <Controller
-              control={control}
-              name="approached"
-              render={({ field }) => (
-                <FieldSet data-invalid={Boolean(errors.approached) || undefined}>
-                  <div className="mb-3 flex items-center gap-2">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="xs"
-                      onClick={() =>
-                        setValue("approached", insurers.map((i) => i.id), { shouldDirty: true, shouldValidate: true })
-                      }
-                      disabled={insurersLoading || approached.length === insurers.length}
-                    >
-                      Select all
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="xs"
-                      onClick={() => setValue("approached", [], { shouldDirty: true, shouldValidate: true })}
-                      disabled={!approached.length}
-                    >
-                      Clear
-                    </Button>
-                    {stale && (
-                      <span className="ml-auto text-xs text-warn">Showing the built-in list (live list unavailable)</span>
-                    )}
-                  </div>
-                  {insurersLoading ? (
-                    <div className="grid gap-2 sm:grid-cols-2">
-                      {Array.from({ length: 8 }).map((_, i) => (
-                        <Skeleton key={i} className="h-11" />
-                      ))}
-                    </div>
-                  ) : (
-                    <div
-                      role="group"
-                      aria-label="Insurers approached"
-                      data-invalid={Boolean(errors.approached) || undefined}
-                      className="grid gap-2 sm:grid-cols-2"
-                      onBlur={field.onBlur}
-                    >
-                      {insurers.map((ins) => {
-                        const checked = approached.includes(ins.id);
-                        return (
-                          <FieldLabel key={ins.id} htmlFor={`ins-${ins.id}`}>
-                            <Field orientation="horizontal" className={cn("items-center", checked && "border-primary/40")}>
-                              <Checkbox
-                                id={`ins-${ins.id}`}
-                                aria-label={ins.name}
-                                checked={checked}
-                                onCheckedChange={(on) => toggleInsurer(ins.id, Boolean(on))}
-                              />
-                              <FieldContent>
-                                <FieldTitle className="text-[13.5px]">{ins.name}</FieldTitle>
-                              </FieldContent>
-                              {ins.debt_collection === "included" && (
-                                <span
-                                  className="label-mono rounded bg-set-soft px-1.5 py-0.5 text-[10px] text-set"
-                                  title="Debt collection support included by insurer rule (BRD 2.4)"
-                                >
-                                  Debt incl
-                                </span>
-                              )}
-                            </Field>
-                          </FieldLabel>
-                        );
-                      })}
-                    </div>
-                  )}
-                  <FieldError errors={[errors.approached as { message?: string } | undefined]} className="mt-3" />
-                </FieldSet>
-              )}
-            />
-          </CardContent>
-        </Card>
+        <section className="rounded-[14px] border border-line bg-surface p-[26px] shadow-card">
+          <div className="mb-1 flex items-center justify-between gap-2.5">
+            <span className="text-[12.5px] font-medium whitespace-nowrap text-ink-2" id="approached-label">
+              Insurers approached
+            </span>
+            <span className="shrink-0 rounded-[5px] bg-accent px-2 py-0.5 font-mono text-[11px] font-medium whitespace-nowrap text-primary">
+              {approached.length} of {insurers.length}
+            </span>
+          </div>
+          <p className="mb-3.5 text-xs text-ink-3">
+            From the standing list — up to {insurers.length}. Ticked insurers with no quote uploaded show as declined on the
+            presentation.
+          </p>
+          {stale && <p className="mb-3 text-xs text-warn">Showing the built-in list (live list unavailable).</p>}
+          <Controller
+            control={control}
+            name="approached"
+            render={({ field }) =>
+              insurersLoading ? (
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {Array.from({ length: 8 }).map((_, i) => (
+                    <Skeleton key={i} className="h-11" />
+                  ))}
+                </div>
+              ) : (
+                <div
+                  role="group"
+                  aria-labelledby="approached-label"
+                  aria-describedby={approachedError ? "approached-error" : undefined}
+                  className="grid gap-2 sm:grid-cols-2"
+                  onBlur={field.onBlur}
+                >
+                  {insurers.map((ins) => {
+                    const checked = approached.includes(ins.id);
+                    return (
+                      <label
+                        key={ins.id}
+                        className={cn(
+                          "flex cursor-pointer items-center gap-2.5 rounded-[9px] border px-[13px] py-[11px] transition-colors has-focus-visible:ring-3 has-focus-visible:ring-accent",
+                          checked ? "border-primary bg-accent" : "border-line bg-surface hover:border-ink-3",
+                        )}
+                      >
+                        <input
+                          type="checkbox"
+                          className="sr-only"
+                          checked={checked}
+                          onChange={(e) => toggleInsurer(ins.id, e.target.checked)}
+                        />
+                        <span
+                          aria-hidden
+                          className={cn(
+                            "grid size-[18px] shrink-0 place-items-center rounded-[5px] border-[1.5px] text-[11px] font-bold text-white",
+                            checked ? "border-primary bg-primary" : "border-[#c5cdd8] bg-white",
+                          )}
+                        >
+                          {checked ? "✓" : ""}
+                        </span>
+                        <span className="min-w-0 truncate text-[13.5px] font-medium text-ink">{ins.name}</span>
+                        {ins.debt_collection === "included" && (
+                          <span
+                            className="ml-auto rounded bg-set-soft px-1.5 py-0.5 font-mono text-[10px] font-medium text-set"
+                            title="Debt collection support included by insurer rule"
+                          >
+                            DEBT INCL
+                          </span>
+                        )}
+                      </label>
+                    );
+                  })}
+                </div>
+              )
+            }
+          />
+          <ErrorText id="approached-error" message={approachedError} />
+        </section>
       </div>
 
-      <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-        <Button
-          type="button"
-          variant="outline"
-          nativeButton={false}
-          render={<Link href={routes.projects} />}
-          disabled={isSubmitting}
-        >
+      <div className="mt-5 flex flex-col-reverse gap-2.5 sm:flex-row sm:justify-end">
+        <Button type="button" variant="outline" nativeButton={false} render={<Link href={routes.projects} />} disabled={isSubmitting}>
           Cancel
         </Button>
         <Button type="submit" disabled={isSubmitting}>
-          {isSubmitting ? (
-            <LoaderCircle className="animate-spin" data-icon="inline-start" />
-          ) : null}
-          {isSubmitting ? "Saving…" : "Save and continue to upload"}
-          {!isSubmitting && <ArrowRight data-icon="inline-end" />}
+          {isSubmitting && <LoaderCircle className="animate-spin" />}
+          {isSubmitting ? "Saving…" : "Continue to upload →"}
         </Button>
       </div>
     </form>

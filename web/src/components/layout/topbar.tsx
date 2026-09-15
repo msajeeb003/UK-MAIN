@@ -1,28 +1,29 @@
 "use client";
 
-import type { ReactNode } from "react";
+import Link from "next/link";
 
-import { AppBreadcrumbs } from "@/components/layout/app-breadcrumbs";
+import { Logo } from "@/components/layout/logo";
 import { UserMenu } from "@/components/layout/user-menu";
-import { Separator } from "@/components/ui/separator";
-import { SidebarTrigger } from "@/components/ui/sidebar";
+import { routes } from "@/lib/navigation";
 
-interface TopbarProps {
-  /** Right-aligned slot for page-level actions (save status, buttons). */
-  actions?: ReactNode;
-}
+/** Where a project screen mounts its "Projects / Client [ref]" trail. */
+export const TOPBAR_CONTEXT_ID = "topbar-context";
 
-/** Sticky, translucent header above the page content (wireframe "topbar"). */
-export function Topbar({ actions }: TopbarProps) {
+/**
+ * Sticky, translucent 60px header from the wireframe: the logo (back to the
+ * project list), the current project's trail when inside the wizard, and
+ * the signed-in user on the right.
+ */
+export function Topbar() {
   return (
-    <header className="sticky top-0 z-20 flex h-14 shrink-0 items-center gap-2 border-b bg-background/80 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/70">
-      <SidebarTrigger className="-ml-1" />
-      <Separator orientation="vertical" className="mr-1 data-[orientation=vertical]:h-4" />
-      <AppBreadcrumbs />
-      <div className="ml-auto flex items-center gap-2">
-        {actions}
-        <UserMenu variant="topbar" />
+    <header className="sticky top-0 z-20 flex h-[60px] shrink-0 items-center justify-between border-b border-line bg-surface/[.82] px-6 backdrop-blur-[12px] backdrop-saturate-[180%]">
+      <div className="flex min-w-0 items-center gap-[26px]">
+        <Link href={routes.projects} className="flex shrink-0 items-center gap-2.5 hover:no-underline" aria-label="Projects">
+          <Logo />
+        </Link>
+        <div id={TOPBAR_CONTEXT_ID} className="flex min-w-0 items-center gap-[9px] text-[13px] text-ink-2" />
       </div>
+      <UserMenu />
     </header>
   );
 }

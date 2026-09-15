@@ -1,11 +1,9 @@
 "use client";
 
-import { ChevronsUpDown, LogOut } from "lucide-react";
+import { LogOut } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -15,7 +13,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { SidebarMenu, SidebarMenuButton, SidebarMenuItem, useSidebar } from "@/components/ui/sidebar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useSession } from "@/hooks/use-session";
 import { errorMessage } from "@/lib/api";
@@ -29,27 +26,23 @@ function initials(name: string, email: string): string {
     .join("");
 }
 
-interface UserMenuProps {
-  /** `sidebar` renders the full-width footer button; `topbar` a compact avatar. */
-  variant?: "sidebar" | "topbar";
-}
-
-export function UserMenu({ variant = "topbar" }: UserMenuProps) {
+/**
+ * The top bar's user block from the wireframe: name over a second line,
+ * then a round initials avatar. Clicking it opens the sign-out menu.
+ */
+export function UserMenu() {
   const { user, status, logout } = useSession();
-  const { isMobile } = useSidebar();
   const [signingOut, setSigningOut] = useState(false);
 
   if (status === "loading") {
-    return variant === "sidebar" ? (
-      <div className="flex items-center gap-2 p-2">
-        <Skeleton className="size-8 rounded-lg" />
-        <div className="flex-1 space-y-1 group-data-[collapsible=icon]:hidden">
-          <Skeleton className="h-3 w-24" />
-          <Skeleton className="h-3 w-32" />
+    return (
+      <div className="flex items-center gap-3.5">
+        <div className="space-y-1">
+          <Skeleton className="h-3 w-20" />
+          <Skeleton className="h-2.5 w-24" />
         </div>
+        <Skeleton className="size-8 rounded-full" />
       </div>
-    ) : (
-      <Skeleton className="size-8 rounded-full" />
     );
   }
   if (!user) return null;
@@ -65,76 +58,36 @@ export function UserMenu({ variant = "topbar" }: UserMenuProps) {
     }
   };
 
-  const avatar = (
-    <Avatar className="size-8 rounded-lg">
-      <AvatarFallback className="rounded-lg bg-primary/10 text-xs font-semibold text-primary">
-        {initials(user.name, user.email)}
-      </AvatarFallback>
-    </Avatar>
-  );
-
-  const content = (
-    <DropdownMenuContent
-      className="min-w-56"
-      side={variant === "sidebar" ? (isMobile ? "bottom" : "right") : "bottom"}
-      align="end"
-      sideOffset={6}
-    >
-      {/* Base UI requires a group label to live inside a group. */}
-      <DropdownMenuGroup>
-        <DropdownMenuLabel className="flex items-center gap-2 font-normal">
-          {avatar}
-          <div className="grid min-w-0 text-sm leading-tight">
-            <span className="truncate font-medium">{user.name || user.email}</span>
-            <span className="truncate text-xs text-muted-foreground">{user.email}</span>
-          </div>
-        </DropdownMenuLabel>
-      </DropdownMenuGroup>
-      <DropdownMenuSeparator />
-      <DropdownMenuGroup>
-        <DropdownMenuItem onClick={onSignOut} disabled={signingOut}>
-          <LogOut />
-          Sign out
-        </DropdownMenuItem>
-      </DropdownMenuGroup>
-    </DropdownMenuContent>
-  );
-
-  if (variant === "sidebar") {
-    return (
-      <SidebarMenu>
-        <SidebarMenuItem>
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              render={
-                <SidebarMenuButton
-                  size="lg"
-                  className="data-[popup-open]:bg-sidebar-accent data-[popup-open]:text-sidebar-accent-foreground"
-                />
-              }
-            >
-              {avatar}
-              <div className="grid flex-1 text-left text-sm leading-tight">
-                <span className="truncate font-medium">{user.name || user.email}</span>
-                <span className="truncate text-xs text-muted-foreground">{user.email}</span>
-              </div>
-              <ChevronsUpDown className="ml-auto size-4" />
-            </DropdownMenuTrigger>
-            {content}
-          </DropdownMenu>
-        </SidebarMenuItem>
-      </SidebarMenu>
-    );
-  }
-
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
-        render={<Button variant="ghost" size="icon" className="rounded-full" aria-label="Account" />}
+        render={<button type="button" className="flex items-center gap-3.5 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring/50" aria-label="Account" />}
       >
-        {avatar}
+        <span className="hidden text-right leading-[1.2] sm:block">
+          <span className="block text-[13px] font-medium text-ink">{user.name || user.email}</span>
+          <span className="block text-[11px] text-ink-3">{user.name ? user.email : "Signed in"}</span>
+        </span>
+        <span className="grid size-8 place-items-center rounded-full bg-set-soft text-[13px] font-semibold text-set">
+          {initials(user.name, user.email)}
+        </span>
       </DropdownMenuTrigger>
-      {content}
+      <DropdownMenuContent className="min-w-56" align="end" sideOffset={6}>
+        <DropdownMenuGroup>
+          <DropdownMenuLabel className="font-normal">
+            <div className="grid min-w-0 text-sm leading-tight">
+              <span className="truncate font-medium">{user.name || user.email}</span>
+              <span className="truncate text-xs text-muted-foreground">{user.email}</span>
+            </div>
+          </DropdownMenuLabel>
+        </DropdownMenuGroup>
+        <DropdownMenuSeparator />
+        <DropdownMenuGroup>
+          <DropdownMenuItem onClick={onSignOut} disabled={signingOut}>
+            <LogOut />
+            Sign out
+          </DropdownMenuItem>
+        </DropdownMenuGroup>
+      </DropdownMenuContent>
     </DropdownMenu>
   );
 }

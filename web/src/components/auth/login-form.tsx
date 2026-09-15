@@ -60,7 +60,7 @@ export function LoginForm() {
   };
 
   return (
-    <form onSubmit={onSubmit} className="space-y-5" noValidate aria-describedby={error ? errorId : undefined}>
+    <form onSubmit={onSubmit} className="space-y-4" noValidate aria-describedby={error ? errorId : undefined}>
       {error && (
         <Alert variant="destructive" id={errorId} role="alert" aria-live="assertive">
           <CircleAlert />
@@ -70,7 +70,7 @@ export function LoginForm() {
       )}
 
       <div className="space-y-2">
-        <Label htmlFor="email">Email</Label>
+        <Label htmlFor="email" className="text-[12.5px] font-medium text-ink-2">Email</Label>
         <Input
           id="email"
           name="email"
@@ -90,6 +90,7 @@ export function LoginForm() {
           disabled={submitting}
           required
           autoFocus
+          className="h-11 rounded-[9px] px-[13px]"
         />
         {fieldError.email && (
           <p id="email-error" className="text-xs text-destructive">
@@ -99,7 +100,7 @@ export function LoginForm() {
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="password">Password</Label>
+        <Label htmlFor="password" className="text-[12.5px] font-medium text-ink-2">Password</Label>
         <div className="relative">
           <Input
             id="password"
@@ -115,7 +116,7 @@ export function LoginForm() {
             aria-describedby={fieldError.password ? "password-error" : undefined}
             disabled={submitting}
             required
-            className="pr-10"
+            className="h-11 rounded-[9px] px-[13px] pr-10"
           />
           <button
             type="button"
@@ -140,9 +141,8 @@ export function LoginForm() {
         {submitting ? "Signing in…" : "Sign in"}
       </Button>
 
-      <p className="text-center text-xs text-muted-foreground">
-        Accounts are created by an administrator. There is no self-registration. Forgotten your
-        password? Ask your administrator to reset it.
+      <p className="mt-[22px] text-center text-xs text-ink-3">
+        No self-registration. Accounts are provisioned by the administrator.
       </p>
     </form>
   );

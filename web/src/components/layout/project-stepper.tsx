@@ -1,6 +1,5 @@
 "use client";
 
-import { Check } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -12,9 +11,9 @@ interface ProjectStepperProps {
 }
 
 /**
- * Horizontal step navigation for a project (Setup -> ... -> Generate).
- * Purely URL-driven: the current step comes from the pathname. Completion
- * state can be layered on later from project data.
+ * The wireframe's stepper bar under the top bar: a full-width white band
+ * with six numbered circles joined by lines. Done steps show a tick,
+ * the current one is filled, later ones are outlined. URL-driven.
  */
 export function ProjectStepper({ projectId }: ProjectStepperProps) {
   const pathname = usePathname();
@@ -22,37 +21,37 @@ export function ProjectStepper({ projectId }: ProjectStepperProps) {
   const current = step ? stepIndex(step) : -1;
 
   return (
-    <nav aria-label="Project steps" className="overflow-x-auto">
-      <ol className="flex min-w-max items-center gap-1 rounded-xl border bg-card p-1.5 shadow-card">
+    <nav aria-label="Project steps" className="border-b border-line bg-surface px-[26px] py-5">
+      <ol className="mx-auto flex max-w-[960px] items-center overflow-x-auto">
         {PROJECT_STEPS.map((s, index) => {
           const state = index < current ? "done" : index === current ? "current" : "todo";
           return (
-            <li key={s.id} className="flex items-center">
+            <li key={s.id} className="contents">
+              {index > 0 && (
+                <span
+                  aria-hidden
+                  className={cn("mx-2.5 h-[2px] min-w-4 flex-1 transition-colors", index <= current ? "bg-primary" : "bg-line")}
+                />
+              )}
               <Link
                 href={routes.projectStep(projectId, s.id)}
                 aria-current={state === "current" ? "step" : undefined}
-                className={cn(
-                  "flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors",
-                  state === "current" && "bg-accent font-semibold text-accent-foreground",
-                  state === "done" && "text-foreground hover:bg-muted",
-                  state === "todo" && "text-muted-foreground hover:bg-muted hover:text-foreground",
-                )}
+                className="flex flex-none items-center gap-[9px] whitespace-nowrap hover:no-underline"
               >
                 <span
                   className={cn(
-                    "grid size-6 shrink-0 place-items-center rounded-full border text-[11px] font-semibold",
-                    state === "current" && "border-primary bg-primary text-primary-foreground",
-                    state === "done" && "border-ok bg-ok-soft text-ok",
-                    state === "todo" && "border-border bg-background text-muted-foreground",
+                    "grid size-[30px] place-items-center rounded-full border-[1.5px] text-[12.5px] font-bold transition-all",
+                    state === "current" && "border-primary bg-primary text-white shadow-[0_2px_8px_rgba(79,70,229,.4)]",
+                    state === "done" && "border-accent bg-accent text-primary",
+                    state === "todo" && "border-line bg-surface text-ink-3",
                   )}
                 >
-                  {state === "done" ? <Check className="size-3.5" strokeWidth={3} /> : index + 1}
+                  {state === "done" ? "✓" : index + 1}
                 </span>
-                <span className="whitespace-nowrap">{s.label}</span>
+                <span className={cn("text-[12.5px]", state === "current" ? "font-bold text-ink" : state === "done" ? "font-medium text-ink" : "font-medium text-ink-3")}>
+                  {s.label}
+                </span>
               </Link>
-              {index < PROJECT_STEPS.length - 1 && (
-                <span aria-hidden className="mx-1 h-px w-4 bg-border" />
-              )}
             </li>
           );
         })}

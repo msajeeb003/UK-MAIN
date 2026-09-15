@@ -11,7 +11,7 @@ interface LimitCellProps {
   cellKey: string;
   value: string;
   label: string;
-  /** Amount cells get right alignment and the zero tag. */
+  /** Amount cells get the zero/declined tag. */
   money?: boolean;
   mono?: boolean;
   placeholder?: string;
@@ -28,9 +28,10 @@ const TITLE: Record<LimitProvenance, string> = {
 };
 
 /**
- * One editable credit-limit cell. Same states as the comparison grid:
- * extracted / edited (accent dot) / manual / blank ("—", dashed) and a
- * distinct "0 · declined" tag for an explicit zero. Commits on blur/Enter.
+ * One editable credit-limit cell (wireframe: borderless input inside the
+ * row, white with an accent ring while focused). Keeps the provenance
+ * states: extracted / edited (accent dot) / manual / blank, plus a
+ * "declined" tag for an explicit zero. Commits on blur/Enter.
  */
 export function LimitCell({ row, cellKey, value, label, money, mono, placeholder, recommended, onChange, onMove }: LimitCellProps) {
   const [text, setText] = useState(value);
@@ -55,8 +56,8 @@ export function LimitCell({ row, cellKey, value, label, money, mono, placeholder
   };
 
   return (
-    <td className={cn("border-b border-line-2 p-0 align-middle", money && "border-l", recommended && "bg-rec")} data-provenance={provenance}>
-      <div className="flex items-center gap-1.5 px-2 py-1">
+    <td className={cn("border-b border-line-2 px-1.5 py-0.5 align-middle", money && "border-l", recommended && "bg-rec")} data-provenance={provenance}>
+      <div className="flex items-center gap-1.5">
         <div className="relative min-w-0 flex-1">
           <input
             id={`limit-${row.id}-${cellKey}`}
@@ -66,14 +67,14 @@ export function LimitCell({ row, cellKey, value, label, money, mono, placeholder
             onChange={(e) => setText(e.target.value)}
             onBlur={commit}
             onKeyDown={onKeyDown}
-            placeholder={provenance === "blank" ? (placeholder ?? "—") : undefined}
+            placeholder={placeholder}
             inputMode={money ? "numeric" : undefined}
             data-provenance={provenance}
             className={cn(
-              "w-full rounded-md bg-transparent px-1.5 py-1 text-[13px] text-foreground outline-none placeholder:text-ink-3 focus:bg-card focus:ring-2 focus:ring-primary",
-              money && "text-right tabular-nums",
-              mono && "font-mono text-xs text-ink-2",
-              provenance === "blank" && "border border-dashed border-ink-3/60",
+              "w-full rounded-md bg-transparent px-1.5 py-2 text-[13px] text-ink outline-none placeholder:text-ink-3 focus:bg-white focus:ring-2 focus:ring-primary",
+              cellKey === "buyer" && "font-medium",
+              mono && "font-mono text-[12.5px] text-ink-2",
+              money && cellKey !== "req" && "placeholder:italic",
               provenance === "edited" && "pl-4",
             )}
           />
@@ -82,7 +83,7 @@ export function LimitCell({ row, cellKey, value, label, money, mono, placeholder
           )}
         </div>
         {declined && (
-          <span className="label-mono shrink-0 rounded bg-muted px-1 text-ink-2" title="Limit declined: an explicit zero, not a missing value">
+          <span className="shrink-0 rounded bg-muted px-1 font-mono text-[10px] text-ink-2 uppercase" title="Limit declined: an explicit zero, not a missing value">
             declined
           </span>
         )}

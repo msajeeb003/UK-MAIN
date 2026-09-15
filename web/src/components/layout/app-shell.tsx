@@ -2,25 +2,21 @@
 
 import type { ReactNode } from "react";
 
-import { AppSidebar } from "@/components/layout/app-sidebar";
 import { Topbar } from "@/components/layout/topbar";
 import { AuthGate } from "@/components/providers/auth-gate";
-import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 
 /**
- * The signed-in application frame: collapsible sidebar, sticky topbar and
- * a scrolling content area. Used by the (app) route group layout.
+ * The signed-in application frame from the wireframe: a sticky, translucent
+ * top bar and the page below it. There is no sidebar — the wizard's stepper
+ * bar and each page's own container come from the route layouts.
  */
 export function AppShell({ children }: { children: ReactNode }) {
   return (
     <AuthGate>
-      <SidebarProvider>
-        <AppSidebar />
-        <SidebarInset className="min-w-0">
-          <Topbar />
-          <div className="flex flex-1 flex-col gap-6 p-4 md:p-6 lg:p-8">{children}</div>
-        </SidebarInset>
-      </SidebarProvider>
+      <div className="flex min-h-screen flex-col">
+        <Topbar />
+        <div className="flex flex-1 flex-col">{children}</div>
+      </div>
     </AuthGate>
   );
 }

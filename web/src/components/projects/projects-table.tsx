@@ -1,15 +1,6 @@
 "use client";
 
-import {
-  ArchiveRestore,
-  ArrowDown,
-  ArrowUp,
-  ArrowUpDown,
-  Ellipsis,
-  FolderClosed,
-  FolderOpen,
-  LoaderCircle,
-} from "lucide-react";
+import { ArchiveRestore, Ellipsis, FolderClosed, FolderOpen, LoaderCircle } from "lucide-react";
 import type { KeyboardEvent, MouseEvent } from "react";
 
 import { ProjectStatusBadge } from "@/components/projects/project-status-badge";
@@ -23,11 +14,11 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { ExportFormat, ProjectState } from "@/lib/api/types";
 import {
   EXPORT_FORMATS,
   formatUpdated,
+  formatUpdatedFull,
   hasReports,
   isClosed,
   projectStatus,
@@ -35,13 +26,8 @@ import {
 } from "@/lib/projects";
 import { cn } from "@/lib/utils";
 
-export type SortKey = "client" | "updated" | "status";
-export type SortDir = "asc" | "desc";
-
 export interface ProjectsTableProps {
   projects: ProjectState[];
-  sort: { key: SortKey; dir: SortDir };
-  onSort: (key: SortKey) => void;
   /** Id of the project with an in-flight action (disables its controls). */
   busyId: string | null;
   /** Format currently downloading for `busyId`, if any. */
@@ -52,218 +38,140 @@ export interface ProjectsTableProps {
   onDownload: (project: ProjectState, format: ExportFormat) => void;
 }
 
-function SortHeader({
-  label,
-  column,
-  sort,
-  onSort,
-  className,
-}: {
-  label: string;
-  column: SortKey;
-  sort: ProjectsTableProps["sort"];
-  onSort: ProjectsTableProps["onSort"];
-  className?: string;
-}) {
-  const active = sort.key === column;
-  const Icon = !active ? ArrowUpDown : sort.dir === "asc" ? ArrowUp : ArrowDown;
-  return (
-    <TableHead
-      className={className}
-      aria-sort={active ? (sort.dir === "asc" ? "ascending" : "descending") : "none"}
-    >
-      <button
-        type="button"
-        onClick={() => onSort(column)}
-        className={cn(
-          "label-mono inline-flex items-center gap-1 rounded hover:text-foreground",
-          active && "text-foreground",
-        )}
-      >
-        {label}
-        <Icon className="size-3" />
-      </button>
-    </TableHead>
-  );
-}
+/** Wireframe columns: Client 2.2fr · Type 1fr · Policy 1.1fr · Status 1.4fr · Updated 1fr · Files 0.9fr, plus the row menu. */
+const GRID = "grid grid-cols-[1fr_auto_32px] md:grid-cols-[2.2fr_1fr_1.1fr_1.4fr_1fr_0.9fr_32px]";
 
 /**
- * S2 project table (BRD: client name, type, date, status, download links;
- * reopening returns to the review screen). Narrow screens keep Client,
- * Status and actions; the other columns come back from `md` / `lg` up.
+ * S2 project list from the wireframe: a card with a mono header row and
+ * one clickable row per project. Files are download links once a
+ * presentation exists; the row menu closes or reopens the project.
  */
-export function ProjectsTable({
-  projects,
-  sort,
-  onSort,
-  busyId,
-  busyFormat,
-  onOpen,
-  onReopen,
-  onClose,
-  onDownload,
-}: ProjectsTableProps) {
+export function ProjectsTable({ projects, busyId, busyFormat, onOpen, onReopen, onClose, onDownload }: ProjectsTableProps) {
   const stop = (e: MouseEvent) => e.stopPropagation();
 
   return (
-    <div className="overflow-hidden rounded-xl border bg-card shadow-card">
-      <Table className="md:min-w-[640px]">
-        <TableHeader className="bg-panel">
-          <TableRow className="hover:bg-transparent">
-            <SortHeader label="Client" column="client" sort={sort} onSort={onSort} className="pl-4" />
-            <TableHead className="label-mono hidden md:table-cell">Type</TableHead>
-            <TableHead className="label-mono hidden lg:table-cell">Policy</TableHead>
-            <SortHeader label="Status" column="status" sort={sort} onSort={onSort} />
-            <SortHeader
-              label="Updated"
-              column="updated"
-              sort={sort}
-              onSort={onSort}
-              className="hidden md:table-cell"
-            />
-            <TableHead className="label-mono text-right">Files</TableHead>
-            <TableHead className="w-12 pr-3">
-              <span className="sr-only">Actions</span>
-            </TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {projects.map((p) => {
-            const status = projectStatus(p);
-            const closed = isClosed(p);
-            const busy = busyId === p.id;
-            const reports = hasReports(p);
-            const onRowKey = (e: KeyboardEvent<HTMLTableRowElement>) => {
-              if (e.target !== e.currentTarget) return;
-              if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault();
-                onOpen(p);
-              }
-            };
-            return (
-              <TableRow
-                key={p.id}
-                tabIndex={0}
-                role="link"
-                aria-label={`Open ${p.clientName || "untitled project"}`}
-                onClick={() => onOpen(p)}
-                onKeyDown={onRowKey}
-                className={cn(
-                  "cursor-pointer focus-visible:bg-muted focus-visible:outline-none",
-                  closed && "text-muted-foreground",
-                  busy && "opacity-60",
-                )}
-              >
-                <TableCell className="pl-4">
-                  <div className={cn("truncate font-semibold", closed ? "text-foreground/80" : "text-foreground")}>
-                    {p.clientName || "Untitled project"}
-                  </div>
-                  <div className="label-mono mt-0.5 truncate normal-case">{p.ref || p.id}</div>
-                  <div className="mt-1 text-xs text-muted-foreground md:hidden">
-                    {projectTypeLabel(p)} · {formatUpdated(p.updated) || "not saved yet"}
-                  </div>
-                </TableCell>
-                <TableCell className="hidden text-muted-foreground md:table-cell">
-                  {projectTypeLabel(p)}
-                </TableCell>
-                <TableCell className="hidden text-muted-foreground lg:table-cell">
-                  {typeof p.policyType === "string" && p.policyType ? p.policyType : "—"}
-                </TableCell>
-                <TableCell>
-                  <ProjectStatusBadge status={status} />
-                </TableCell>
-                <TableCell className="hidden text-xs text-muted-foreground md:table-cell">
-                  {formatUpdated(p.updated) || "—"}
-                </TableCell>
-                <TableCell className="text-right" onClick={stop}>
-                  {reports ? (
-                    <div className="inline-flex items-center gap-0.5">
-                      {EXPORT_FORMATS.map((f, i) => (
-                        <span key={f.format} className="inline-flex items-center">
-                          {i > 0 && <span className="px-0.5 text-ink-3">·</span>}
-                          <Button
-                            variant="link"
-                            size="xs"
-                            className="label-mono h-auto px-0.5 text-primary"
-                            title={`Download ${f.label}`}
-                            aria-label={`Download ${f.label} for ${p.clientName || "project"}`}
-                            disabled={busy}
-                            onClick={() => onDownload(p, f.format)}
-                          >
-                            {busy && busyFormat === f.format ? (
-                              <LoaderCircle className="size-3 animate-spin" />
-                            ) : (
-                              f.short
-                            )}
-                          </Button>
-                        </span>
-                      ))}
-                    </div>
-                  ) : (
-                    <span className="label-mono" title="No presentation generated yet">
-                      —
-                    </span>
-                  )}
-                </TableCell>
-                <TableCell className="pr-3 text-right" onClick={stop}>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger
-                      render={
-                        <Button
-                          variant="ghost"
-                          size="icon-sm"
-                          aria-label={`Actions for ${p.clientName || "project"}`}
-                          disabled={busy}
-                        />
-                      }
+    <div className="overflow-hidden rounded-[14px] border border-line bg-surface shadow-card">
+      <div className={cn(GRID, "label-mono items-center border-b border-line bg-panel px-[18px] py-3 font-medium")} role="row">
+        <span>Client</span>
+        <span className="hidden md:block">Type</span>
+        <span className="hidden md:block">Policy</span>
+        <span>Status</span>
+        <span className="hidden md:block">Updated</span>
+        <span className="hidden text-right md:block">Files</span>
+        <span className="sr-only">Actions</span>
+      </div>
+      {projects.map((p) => {
+        const status = projectStatus(p);
+        const closed = isClosed(p);
+        const busy = busyId === p.id;
+        const reports = hasReports(p);
+        const onRowKey = (e: KeyboardEvent<HTMLDivElement>) => {
+          if (e.target !== e.currentTarget) return;
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            onOpen(p);
+          }
+        };
+        return (
+          <div
+            key={p.id}
+            role="link"
+            tabIndex={0}
+            aria-label={`Open ${p.clientName || "untitled project"}`}
+            onClick={() => onOpen(p)}
+            onKeyDown={onRowKey}
+            className={cn(
+              GRID,
+              "cursor-pointer items-center border-b border-line-2 px-[18px] py-[15px] text-[13.5px] transition-colors last:border-b-0 hover:bg-panel focus-visible:bg-panel focus-visible:outline-none",
+              busy && "opacity-60",
+            )}
+          >
+            <div className="min-w-0">
+              <div className={cn("truncate font-semibold", closed ? "text-ink-2" : "text-ink")}>{p.clientName || "Untitled project"}</div>
+              <div className="truncate font-mono text-[11.5px] text-ink-3">{p.ref || p.id}</div>
+              <div className="mt-0.5 text-xs text-ink-2 md:hidden">
+                {projectTypeLabel(p)} · {formatUpdated(p.updated) || "not saved yet"}
+              </div>
+            </div>
+            <span className="hidden text-ink-2 md:block">{projectTypeLabel(p)}</span>
+            <span className="hidden text-ink-2 md:block">
+              {typeof p.policyType === "string" && p.policyType ? p.policyType : "—"}
+            </span>
+            <span>
+              <ProjectStatusBadge status={status} />
+            </span>
+            <span className="hidden text-[12.5px] text-ink-2 md:block" title={formatUpdatedFull(p.updated)}>
+              {formatUpdated(p.updated) || "—"}
+            </span>
+            <span className="hidden text-right font-mono text-[11px] font-medium text-ink-3 md:block" onClick={stop}>
+              {reports ? (
+                EXPORT_FORMATS.filter((f) => f.format !== "limits-xlsx").map((f, i) => (
+                  <span key={f.format}>
+                    {i > 0 && " · "}
+                    <button
+                      type="button"
+                      title={`Download ${f.label}`}
+                      aria-label={`Download ${f.label} for ${p.clientName || "project"}`}
+                      disabled={busy}
+                      onClick={() => onDownload(p, f.format)}
+                      className="text-primary hover:underline disabled:opacity-50"
                     >
-                      <Ellipsis />
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="min-w-48">
-                      <DropdownMenuGroup>
-                        <DropdownMenuLabel className="truncate">
-                          {p.clientName || "Untitled project"}
-                        </DropdownMenuLabel>
-                        <DropdownMenuItem onClick={() => onOpen(p)}>
-                          <FolderOpen />
-                          {closed ? "View (read-only)" : "Open review"}
-                        </DropdownMenuItem>
-                      </DropdownMenuGroup>
-                      {reports && (
-                        <>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuGroup>
-                            <DropdownMenuLabel>Download</DropdownMenuLabel>
-                            {EXPORT_FORMATS.map((f) => (
-                              <DropdownMenuItem key={f.format} onClick={() => onDownload(p, f.format)}>
-                                {f.label}
-                              </DropdownMenuItem>
-                            ))}
-                          </DropdownMenuGroup>
-                        </>
-                      )}
+                      {busy && busyFormat === f.format ? <LoaderCircle className="inline size-3 animate-spin" /> : f.short}
+                    </button>
+                  </span>
+                ))
+              ) : (
+                <span title="No presentation generated yet">—</span>
+              )}
+            </span>
+            <span className="text-right" onClick={stop}>
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  render={<Button variant="ghost" size="icon-sm" aria-label={`Actions for ${p.clientName || "project"}`} disabled={busy} />}
+                >
+                  <Ellipsis />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="min-w-48">
+                  <DropdownMenuGroup>
+                    <DropdownMenuLabel className="truncate">{p.clientName || "Untitled project"}</DropdownMenuLabel>
+                    <DropdownMenuItem onClick={() => onOpen(p)}>
+                      <FolderOpen />
+                      {closed ? "View (read-only)" : "Open review"}
+                    </DropdownMenuItem>
+                  </DropdownMenuGroup>
+                  {reports && (
+                    <>
                       <DropdownMenuSeparator />
                       <DropdownMenuGroup>
-                        {closed ? (
-                          <DropdownMenuItem onClick={() => onReopen(p)}>
-                            <ArchiveRestore />
-                            Reopen project
+                        <DropdownMenuLabel>Download</DropdownMenuLabel>
+                        {EXPORT_FORMATS.map((f) => (
+                          <DropdownMenuItem key={f.format} onClick={() => onDownload(p, f.format)}>
+                            {f.label}
                           </DropdownMenuItem>
-                        ) : (
-                          <DropdownMenuItem onClick={() => onClose(p)}>
-                            <FolderClosed />
-                            Close project
-                          </DropdownMenuItem>
-                        )}
+                        ))}
                       </DropdownMenuGroup>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </TableCell>
-              </TableRow>
-            );
-          })}
-        </TableBody>
-      </Table>
+                    </>
+                  )}
+                  <DropdownMenuSeparator />
+                  <DropdownMenuGroup>
+                    {closed ? (
+                      <DropdownMenuItem onClick={() => onReopen(p)}>
+                        <ArchiveRestore />
+                        Reopen project
+                      </DropdownMenuItem>
+                    ) : (
+                      <DropdownMenuItem onClick={() => onClose(p)}>
+                        <FolderClosed />
+                        Close project
+                      </DropdownMenuItem>
+                    )}
+                  </DropdownMenuGroup>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </span>
+          </div>
+        );
+      })}
     </div>
   );
 }
