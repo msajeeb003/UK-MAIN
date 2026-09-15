@@ -18,6 +18,7 @@ import json
 import logging
 import secrets
 import threading
+import time
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
@@ -27,7 +28,7 @@ from app.api.routes import process_upload, validate_upload
 from app.core import db
 from app.core.auth import require_user
 from app.services import documents as docs
-from app.services.pipeline import EngineOverride, FileKind
+from app.services.pipeline import EngineOverride, FileKind, StepRecorder
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +38,7 @@ JobStatus = Literal["queued", "processing", "done", "error"]
 
 MAX_CONCURRENT = 3                 # simultaneous extractions per process
 RETENTION_SECONDS = 24 * 3600      # finished jobs are readable for a day
+RETRY_DELAY_SECONDS = 2.0          # pause before the single retry of a transient failure
 _slots = threading.Semaphore(MAX_CONCURRENT)
 
 
@@ -81,37 +83,68 @@ def _sweep_old_jobs() -> None:
     )
 
 
+def _kind_label(doc_kind: str | None) -> str:
+    return {"limits": "credit-limit doc", "expiring": "expiring policy"}.get(doc_kind or "", "quote")
+
+
+def _fail(job_id: str, project_id: str | None, document_id: str | None, doc_kind: str | None,
+          reason: str, status_code: int, rec: StepRecorder, attempt: int) -> None:
+    """Terminal failure: the job row, the document record (`unreadable` with
+    the reason) and its upload card — this document only."""
+    _set(job_id, status="error", stage="failed", error=reason, error_status=status_code)
+    if document_id:
+        # The card first, the record last: once a poller sees the record
+        # terminal, everything about this document is already in place.
+        if project_id:
+            docs.update_file_entry(project_id, document_id, status="error",
+                                   meta=f"{_kind_label(doc_kind)} · {reason}", clear_job=True)
+        docs.set_status(document_id, "unreadable", stage="failed", error=reason, attempt=attempt,
+                        timings=[s.model_dump() for s in rec.steps])
+
+
 def _run_job(job_id: str, file_bytes: bytes, filename: str, file_kind: FileKind,
              engine: EngineOverride, project_id: str | None, doc_kind: str | None,
              actor: str, document_id: str | None = None) -> None:
     """Worker-thread body: wait for a slot, run the shared upload pipeline,
-    record the outcome. Never raises — every failure lands in the row. When
-    the upload has a document record (multi-file uploads), the record
-    follows the job: processing → complete | failed."""
+    record the outcome. Never raises — every failure lands in the rows of
+    this document only, so one bad file never blocks the others. A
+    transient provider failure (rate limit, timeout) is retried once; a
+    hard failure (unreadable file, no text after OCR, no insurer) marks the
+    document `unreadable` with the reason."""
     with _slots:
         _set(job_id, status="processing", stage="extracting")
         if document_id:
-            docs.set_status(document_id, "processing", stage="extracting")
-        try:
-            result = asyncio.run(process_upload(
-                file_bytes, filename, file_kind, engine,
-                project_id=project_id, doc_kind=doc_kind, actor=actor,
-                endpoint="/extract-jobs", document_id=document_id,
-            ))
-            _set(job_id, status="done", stage="done",
-                 result=result.model_dump_json())
-        except HTTPException as exc:
-            _set(job_id, status="error", stage="failed",
-                 error=str(exc.detail), error_status=exc.status_code)
-            if document_id:
-                docs.set_status(document_id, "failed", stage="failed", error=str(exc.detail))
-        except Exception as exc:  # noqa: BLE001 — must never kill the thread silently
-            logger.exception("Extraction job %s crashed", job_id)
-            message = "Extraction failed unexpectedly. Check the server logs."
-            _set(job_id, status="error", stage="failed", error=message, error_status=502)
-            if document_id:
-                docs.set_status(document_id, "failed", stage="failed", error=message)
-            del exc
+            docs.set_status(document_id, "processing", stage="extracting", attempt=1)
+            if project_id:
+                docs.update_file_entry(project_id, document_id, status="processing",
+                                       meta=f"{_kind_label(doc_kind)} · processing · reading and extracting")
+        for attempt in (1, 2):
+            rec = StepRecorder()
+            try:
+                result = asyncio.run(process_upload(
+                    file_bytes, filename, file_kind, engine,
+                    project_id=project_id, doc_kind=doc_kind, actor=actor,
+                    endpoint="/extract-jobs", document_id=document_id, steps=rec,
+                ))
+                _set(job_id, status="done", stage="done", result=result.model_dump_json())
+                return
+            except HTTPException as exc:
+                reason = str(exc.detail)
+                if attempt == 1 and getattr(exc.__cause__, "transient", False):
+                    logger.warning("Job %s: transient failure, retrying once: %s", job_id, reason)
+                    _set(job_id, stage="retrying")
+                    if document_id:
+                        docs.set_status(document_id, "processing", stage="retrying", attempt=2,
+                                        timings=[s.model_dump() for s in rec.steps])
+                    time.sleep(RETRY_DELAY_SECONDS)
+                    continue
+                _fail(job_id, project_id, document_id, doc_kind, reason, exc.status_code, rec, attempt)
+                return
+            except Exception:  # noqa: BLE001 — must never kill the thread silently
+                logger.exception("Extraction job %s crashed", job_id)
+                _fail(job_id, project_id, document_id, doc_kind,
+                      "Extraction failed unexpectedly. Check the server logs.", 502, rec, attempt)
+                return
 
 
 def create_job(*, project_id: str | None, doc_kind: str | None, filename: str,

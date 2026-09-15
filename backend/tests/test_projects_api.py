@@ -299,3 +299,37 @@ def test_legacy_blob_rows_are_imported_once(clean):
             assert repo.import_legacy(session) == 0              # idempotent
     finally:
         db.execute("DELETE FROM projects WHERE id IN ('legacy-1', 'legacy-2')")
+
+
+def test_additive_columns_are_added_to_existing_tables(tmp_path, monkeypatch):
+    """A column added to a model after the first deploy is added by ALTER
+    TABLE on start-up (create_all alone would leave the old table as is)."""
+    import sqlite3
+
+    from sqlalchemy import inspect
+
+    from app.db import engine as store
+
+    path = tmp_path / "old.db"
+    con = sqlite3.connect(path)
+    con.execute("CREATE TABLE documents (id VARCHAR(32) PRIMARY KEY, project_id VARCHAR(64) NOT NULL, "
+                "slot VARCHAR(16) NOT NULL, filename VARCHAR(255) NOT NULL)")
+    con.commit()
+    con.close()
+    from app.core.config import get_settings
+    monkeypatch.setattr(get_settings(), "database_url", "sqlite:///" + path.as_posix())
+    store.dispose()
+    try:
+        engine = store.get_engine()
+        cols = {c["name"] for c in inspect(engine).get_columns("documents")}
+        assert {"attempts", "timings", "status", "storage_key"} <= cols
+        with engine.connect() as c:
+            c.execute(__import__("sqlalchemy").text(
+                "INSERT INTO documents (id, project_id, slot, filename) VALUES ('d1', 'p1', 'quote', 'q.pdf')"))
+            c.commit()
+            row = c.execute(__import__("sqlalchemy").text("SELECT attempts, status FROM documents")).one()
+        assert tuple(row) == (0, "uploaded")                       # defaults applied to old rows
+    finally:
+        store.dispose()
+        monkeypatch.setattr(get_settings(), "database_url", "")
+        store.dispose()

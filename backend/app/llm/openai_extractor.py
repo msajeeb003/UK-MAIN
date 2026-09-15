@@ -20,7 +20,7 @@ from openai import (
 )
 
 from app.core.config import get_settings
-from app.core.errors import ConfigurationError, UpstreamServiceError
+from app.core.errors import ConfigurationError, TransientUpstreamError, UpstreamServiceError
 from app.llm.prompt import build_system_prompt, build_user_message
 from app.models.schemas import QuoteExtraction
 
@@ -65,13 +65,13 @@ def extract_with_openai(tagged_document_text: str) -> QuoteExtraction:
     except RateLimitError as exc:
         # Covers true rate limits AND exhausted credits (insufficient_quota).
         logger.error("OpenAI rate/credit limit: %s", exc)
-        raise UpstreamServiceError(
+        raise TransientUpstreamError(
             "OpenAI refused the request — rate limit reached or no credits "
             "remaining on the account. Check the billing page."
         ) from exc
     except (APITimeoutError, APIConnectionError) as exc:
         logger.error("OpenAI connection problem: %s", exc)
-        raise UpstreamServiceError(
+        raise TransientUpstreamError(
             "Could not reach OpenAI (timeout or network error). Try again."
         ) from exc
 

@@ -42,8 +42,9 @@ set `TEST_DATABASE_URL` only to run it against a throwaway database.
 - **documents** — one row per uploaded file (BRD S4): `project_id → projects.id
   ON DELETE CASCADE`, `slot` (`quote` | `expiring` | `limits`), `filename`,
   `content_type`, `size_bytes`, `storage_backend` + `storage_key` (where the
-  bytes live), `status` (`pending` → `processing` → `complete` | `failed`),
-  `stage`, `error`, `page_count`, `job_id` (the extraction job), `uploaded_by`,
+  bytes live), `status` (`uploaded` → `processing` → `ready` | `unreadable`),
+  `stage`, `error` (the reason when unreadable), `page_count`, `attempts`,
+  `timings` (per-step ms/outcome of the last run), `job_id`, `uploaded_by`,
   `uploaded_at`, `updated_at`, `processed_at`.
 
 The schema is created with `metadata.create_all` at start-up (idempotent).
@@ -83,17 +84,38 @@ Object keys are `projects/<project_id>/docs/<document_id>_<safe filename>`.
 
 | Method | Path | Purpose |
 |---|---|---|
-| `POST` | `/projects/{id}/documents` (multipart: `files[]`, `slot`) | Upload up to 20 files into one slot → 202 with one record per file, in request order: `pending` + `job_id` for queued files, `failed` + `error` for files rejected up front (type, size, empty). |
+| `POST` | `/projects/{id}/documents` (multipart: `files[]`, `slot`) | Upload up to 20 files into one slot → 202 with one record per file, in request order: `uploaded` + `job_id` for queued files, `unreadable` + `error` for files rejected up front (type, size, empty). A file of the same name in the same slot replaces its earlier record (re-run of that document only). |
+| `POST` | `/projects/{id}/documents/{doc}/rerun` | Run the pipeline again on the stored file → 202. Idempotent: refreshes that document's extractions, keeps the broker's edits. |
 | `GET` | `/projects/{id}/documents?slot=&status=` | The project's records. |
 | `GET` | `/projects/{id}/documents/{doc}` | One record — poll for `status`. |
 | `DELETE` | `/projects/{id}/documents/{doc}` | Remove the record and its object → 204. |
 | `GET` | `/documents/{doc}/page/{n}` | Rendered PDF page (S5 source view), served from the store. |
 
-The extraction worker moves a record `processing` → `complete` (with
-`page_count`) or `failed` (with the reason); the job's result carries the
-same `document_id`. Erasing a project deletes its objects and records. The
-single-file `/extract-quote` and `/extract-jobs` paths still work and now
-create the same records (already `complete`).
+### Processing pipeline (a job per document)
+
+Each record gets its own background job (`app/api/jobs.py`, a worker
+thread; at most three run at once per process, the rest queue). Steps, in
+order, each timed and logged as a `pipeline_step` event and stored on the
+record's `timings`: **text_extraction** (digital, else OCR) →
+**extraction** (one structured model call returning document type, insurer,
+the fields and any buyer limits, with the terminology map in its prompt) →
+**identification** (insurer matched against the standing list; a quote
+that names no insurer is unreadable) → **terminology_mapping** (the map
+version used) → **verification** → **persist** (`app/services/apply.py`:
+the comparison column or the buyer rows, plus the upload card in the
+project's working document).
+
+- A transient provider failure (429, timeout, network) is retried once
+  (`attempts` = 2); a hard failure (cannot open / encrypted PDF, no text
+  after OCR, no insurer identified) marks the record `unreadable` with the
+  reason, and its card shows it. Other documents are never affected.
+- Idempotent: re-running a document rewrites its own extractions only — a
+  cell the broker edited keeps the broker's value (the new AI value becomes
+  its `orig`), set-field overrides, the waiting period and typed offers stay.
+- `processing_status` on the project (and the documents list) is derived:
+  `processing` while any record is `uploaded`/`processing`, else `ready`.
+- The single-file `/extract-quote` and `/extract-jobs` paths still work and
+  create the same records (already `ready`); those callers persist client-side.
 
 ## Comparison grid (`app/services/grid.py`, `app/api/grid.py`)
 

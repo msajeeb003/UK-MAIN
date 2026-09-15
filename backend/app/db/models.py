@@ -32,7 +32,7 @@ PROJECT_STATUSES = ("draft", "ready", "sent", "closed")
 # Upload slots (BRD S4): insurer quotes, the expiring policy, credit-limit
 # schedules. Per-file processing status of an upload.
 DOCUMENT_SLOTS = ("quote", "expiring", "limits")
-DOCUMENT_STATUSES = ("pending", "processing", "complete", "failed")
+DOCUMENT_STATUSES = ("uploaded", "processing", "ready", "unreadable")
 
 JSONDocument = JSON().with_variant(JSONB(), "postgresql")
 
@@ -117,10 +117,15 @@ class Document(Base):
     # e.g. a rejected upload that is kept only as a failed record).
     storage_backend: Mapped[str] = mapped_column(String(16), nullable=False, default="local")
     storage_key: Mapped[str] = mapped_column(String(512), nullable=False, default="")
-    status: Mapped[str] = mapped_column(String(16), nullable=False, default="pending")
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="uploaded")
     stage: Mapped[str] = mapped_column(String(40), nullable=False, default="queued")
+    # Why the document is `unreadable` (client-safe wording).
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     page_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # Pipeline runs so far (a transient provider error is retried once).
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # Per-step timings/outcomes of the last run (accuracy work, ART-330).
+    timings: Mapped[list | None] = mapped_column(JSONDocument, nullable=True)
     # The extraction job processing this file (app/api/jobs.py), while any.
     job_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
     uploaded_by: Mapped[str] = mapped_column(String(320), nullable=False, default="")

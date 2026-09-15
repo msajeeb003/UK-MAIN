@@ -20,7 +20,7 @@ import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
 
-from sqlalchemy import Engine, create_engine, event
+from sqlalchemy import Engine, create_engine, event, inspect, text
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -72,6 +72,7 @@ def get_engine() -> Engine:
                 Path(url.removeprefix("sqlite:///")).parent.mkdir(parents=True, exist_ok=True)
             engine = _build(url)
             Base.metadata.create_all(engine)
+            _add_missing_columns(engine)
             _engine, _engine_url = engine, url
             logger.info("Project store ready (%s)", "postgresql" if url.startswith("postgresql") else "sqlite")
         engine = _engine
@@ -84,6 +85,33 @@ def get_engine() -> Engine:
     if run_import:
         _import_legacy(engine)
     return engine
+
+
+def _add_missing_columns(engine: Engine) -> None:
+    """Additive schema upkeep: `create_all` only creates missing tables, so
+    a column added to a model after the first deploy is added here with
+    `ALTER TABLE … ADD COLUMN` (nullable or defaulted, so existing rows are
+    fine). Renames, drops and type changes still need a real migration."""
+    inspector = inspect(engine)
+    existing_tables = set(inspector.get_table_names())
+    with engine.begin() as conn:
+        for table in Base.metadata.sorted_tables:
+            if table.name not in existing_tables:
+                continue
+            present = {c["name"] for c in inspector.get_columns(table.name)}
+            for column in table.columns:
+                if column.name in present:
+                    continue
+                col_type = column.type.compile(dialect=engine.dialect)
+                default = ""
+                if column.default is not None and getattr(column.default, "is_scalar", False):
+                    arg = column.default.arg
+                    default = f" DEFAULT {arg!r}" if isinstance(arg, str) else f" DEFAULT {arg}"
+                nullable = "" if column.nullable or default else " NULL"
+                conn.execute(text(
+                    f"ALTER TABLE {table.name} ADD COLUMN {column.name} {col_type}{default}{nullable}"  # noqa: S608 — identifiers from the model, not user input
+                ))
+                logger.info("Schema upkeep: added %s.%s", table.name, column.name)
 
 
 def _import_legacy(engine: Engine) -> None:

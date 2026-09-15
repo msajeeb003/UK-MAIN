@@ -19,7 +19,7 @@ from functools import lru_cache
 import anthropic
 
 from app.core.config import get_settings
-from app.core.errors import ConfigurationError, UpstreamServiceError
+from app.core.errors import ConfigurationError, TransientUpstreamError, UpstreamServiceError
 from app.llm.prompt import build_system_prompt, build_user_message
 from app.models.schemas import QuoteExtraction
 
@@ -93,13 +93,13 @@ def extract_with_anthropic(tagged_document_text: str) -> QuoteExtraction:
         raise
     except anthropic.RateLimitError as exc:
         logger.error("Claude API rate/credit limit: %s", exc)
-        raise UpstreamServiceError(
+        raise TransientUpstreamError(
             "The Claude API refused the request — rate limit reached or no "
             "credits remaining on the account. Check the billing page."
         ) from exc
     except (anthropic.APITimeoutError, anthropic.APIConnectionError) as exc:
         logger.error("Claude API connection problem: %s", exc)
-        raise UpstreamServiceError(
+        raise TransientUpstreamError(
             "Could not reach the Claude API (timeout or network error). Try again."
         ) from exc
 

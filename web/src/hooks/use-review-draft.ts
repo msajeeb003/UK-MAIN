@@ -10,6 +10,16 @@ export type SaveState = "idle" | "dirty" | "saving" | "saved" | "error";
 
 const DEBOUNCE_MS = 700;
 
+type WithId = { id?: unknown };
+
+/** Draft items in draft order, then server items the draft has not seen. */
+function mergeById(server: unknown[] | undefined, draft: unknown[] | undefined): unknown[] {
+  const mine = Array.isArray(draft) ? draft : [];
+  const theirs = Array.isArray(server) ? server : [];
+  const known = new Set(mine.map((x) => (x as WithId)?.id));
+  return [...mine, ...theirs.filter((x) => !known.has((x as WithId)?.id))];
+}
+
 /** Keys the review screen owns; everything else is left to the latest saved copy. */
 const REVIEW_KEYS = ["columns", "credit", "limitsHidden", "files", "confirmed", "reviewed", "reviewedAt", "notes", "manualSeq", "recommended", "reasons", "keyDifferences", "updated"] as const;
 
@@ -41,7 +51,18 @@ export function useReviewDraft(initial: ProjectState) {
       await update((current) => {
         const merged: ProjectState = { ...current };
         for (const key of REVIEW_KEYS) {
-          if (key in snapshot) (merged as Record<string, unknown>)[key] = snapshot[key];
+          if (!(key in snapshot)) continue;
+          if (key === "columns" || key === "credit" || key === "files") {
+            // The pipeline may have added a column / buyer row / card since
+            // the draft was taken: keep server-only items, let the draft's
+            // version win for items it knows.
+            (merged as Record<string, unknown>)[key] = mergeById(
+              current[key] as unknown[] | undefined,
+              snapshot[key] as unknown[] | undefined,
+            );
+          } else {
+            (merged as Record<string, unknown>)[key] = snapshot[key];
+          }
         }
         return merged;
       });

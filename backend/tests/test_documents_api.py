@@ -20,7 +20,7 @@ def _wait_doc(client, pid: str, doc_id: str, timeout: float = 20.0) -> dict:
         res = client.get(f"/projects/{pid}/documents/{doc_id}")
         assert res.status_code == 200
         body = res.json()
-        if body["status"] in ("complete", "failed"):
+        if body["status"] in ("ready", "unreadable"):
             return body
         time.sleep(0.05)
     pytest.fail(f"document {doc_id} did not finish in {timeout}s")
@@ -48,7 +48,7 @@ def test_multi_file_upload_returns_a_record_per_file(client, digital_pdf, sample
     assert [r["filename"] for r in recs] == ["a.pdf", "b.pdf", "notes.txt"]
 
     first = recs[0]
-    assert first["status"] in ("pending", "processing")
+    assert first["status"] in ("uploaded", "processing")
     assert first["slot"] == "quote" and first["job_id"]
     assert first["storage_backend"] == "local" and first["size_bytes"] == len(digital_pdf)
     assert first["content_type"] == "application/pdf" and first["error"] is None
@@ -57,15 +57,15 @@ def test_multi_file_upload_returns_a_record_per_file(client, digital_pdf, sample
     assert any(f.name.startswith(first["id"]) for f in _docs_dir("doc-p1").iterdir())
 
     rejected = recs[2]
-    assert rejected["status"] == "failed" and rejected["stage"] == "rejected"
+    assert rejected["status"] == "unreadable" and rejected["stage"] == "rejected"
     assert rejected["job_id"] is None and rejected["size_bytes"] == 0
     assert "PDF" in rejected["error"] and rejected["processed_at"]
 
     # The worker moves the queued records to complete.
     done = _wait_doc(client, "doc-p1", first["id"])
-    assert done["status"] == "complete" and done["stage"] == "done"
+    assert done["status"] == "ready" and done["stage"] == "done"
     assert done["page_count"] == 2 and done["processed_at"] and done["error"] is None
-    assert _wait_doc(client, "doc-p1", recs[1]["id"])["status"] == "complete"
+    assert _wait_doc(client, "doc-p1", recs[1]["id"])["status"] == "ready"
 
     # The extraction result names the same record (S5 source links).
     job = client.get(f"/extract-jobs/{first['job_id']}").json()
@@ -76,7 +76,7 @@ def test_multi_file_upload_returns_a_record_per_file(client, digital_pdf, sample
     # Listing and filters.
     listed = client.get("/projects/doc-p1/documents").json()["documents"]
     assert [d["id"] for d in listed] == [r["id"] for r in recs]
-    failed = client.get("/projects/doc-p1/documents", params={"status": "failed"}).json()["documents"]
+    failed = client.get("/projects/doc-p1/documents", params={"status": "unreadable"}).json()["documents"]
     assert [d["id"] for d in failed] == [rejected["id"]]
     assert client.get("/projects/doc-p1/documents", params={"slot": "limits"}).json()["documents"] == []
     assert client.get("/projects/doc-p1/documents", params={"slot": "nope"}).status_code == 422
@@ -110,9 +110,9 @@ def test_pipeline_failure_marks_the_record_failed(client):
     )
     assert res.status_code == 202
     rec = res.json()["documents"][0]
-    assert rec["status"] in ("pending", "processing") and rec["slot"] == "limits"
+    assert rec["status"] in ("uploaded", "processing") and rec["slot"] == "limits"
     done = _wait_doc(client, "doc-p2", rec["id"])
-    assert done["status"] == "failed" and done["stage"] == "failed"
+    assert done["status"] == "unreadable" and done["stage"] == "failed"
     assert done["error"] and done["processed_at"]
     # The object stays (the broker can inspect it) until the record is removed.
     assert any(f.name.startswith(rec["id"]) for f in _docs_dir("doc-p2").iterdir())
@@ -140,7 +140,7 @@ def test_sync_extract_quote_still_retains_through_the_store(client, digital_pdf,
     assert res.status_code == 200
     doc_id = res.json()["meta"]["document_id"]
     rec = client.get(f"/projects/doc-p4/documents/{doc_id}").json()
-    assert rec["status"] == "complete" and rec["slot"] == "expiring" and rec["page_count"] == 2
+    assert rec["status"] == "ready" and rec["slot"] == "expiring" and rec["page_count"] == 2
     # The project row was created as a draft so the record has a parent.
     assert client.get("/projects/doc-p4").json()["status"] == "draft"
     client.delete("/projects/doc-p4")

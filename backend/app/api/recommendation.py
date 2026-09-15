@@ -66,15 +66,17 @@ def put_recommendation(project_id: str, body: RecommendationIn, session: Db, use
     key differences. The system never ranks or suggests (BRD 2.7)."""
     project = _project(session, project_id)
     approached = _approached(project)
-    try:
-        next_state = rec.set_recommendation(project.state or {}, approached, body.insurer,
-                                            body.reasons, body.key_differences)
-    except rec.UnknownInsurer as exc:
-        raise HTTPException(status_code=422, detail=f"Unknown insurer: {exc}. Use a standing-list name.") from exc
-    except rec.NoQuote as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    repo.patch(session, project.id, {"state": next_state}, user["email"])
-    session.commit()
+    with repo.project_lock(project_id):
+        repo.require(session, project_id, for_update=True)
+        try:
+            next_state = rec.set_recommendation(project.state or {}, approached, body.insurer,
+                                                body.reasons, body.key_differences)
+        except rec.UnknownInsurer as exc:
+            raise HTTPException(status_code=422, detail=f"Unknown insurer: {exc}. Use a standing-list name.") from exc
+        except rec.NoQuote as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        repo.patch(session, project.id, {"state": next_state}, user["email"])
+        session.commit()
     session.refresh(project)
     view = rec.current(project.state or {}, approached)
     audit.record("recommendation.set", target=project.id, actor=user["email"],

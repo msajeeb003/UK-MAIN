@@ -183,6 +183,10 @@ export const documentsApi = {
   get: (projectId: string, documentId: string, signal?: AbortSignal) =>
     http.get<DocumentRecord>(`/projects/${encodeURIComponent(projectId)}/documents/${encodeURIComponent(documentId)}`, { signal }),
 
+  /** Run the pipeline again on the stored file (broker edits survive). */
+  rerun: (projectId: string, documentId: string) =>
+    http.post<DocumentRecord>(`/projects/${encodeURIComponent(projectId)}/documents/${encodeURIComponent(documentId)}/rerun`),
+
   /** Remove the record and its stored file. */
   remove: (projectId: string, documentId: string) =>
     http.delete<void>(`/projects/${encodeURIComponent(projectId)}/documents/${encodeURIComponent(documentId)}`),

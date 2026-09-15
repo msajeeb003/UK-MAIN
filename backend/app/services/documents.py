@@ -1,7 +1,7 @@
 """
 Document records: one row per uploaded file, tracking where the bytes live
 (object store key) and how far processing has got —
-`pending` → `processing` → `complete` | `failed`.
+`uploaded` → `processing` → `ready` | `unreadable` (with a reason).
 
 Pure data access over app.db.models.Document plus the object-key
 convention; the upload endpoint, the extraction worker and the erasure
@@ -69,6 +69,8 @@ def serialize(doc: Document) -> dict:
         "stage": doc.stage,
         "error": doc.error,
         "page_count": doc.page_count,
+        "attempts": doc.attempts,
+        "timings": doc.timings or [],
         "job_id": doc.job_id,
         "storage_backend": doc.storage_backend,
         "uploaded_by": doc.uploaded_by,
@@ -82,7 +84,7 @@ def serialize(doc: Document) -> dict:
 
 def create(session: Session, *, document_id: str, project_id: str, slot: str, filename: str,
            content_type: str, size_bytes: int, storage_backend: str, storage_key: str,
-           actor: str, status: str = "pending", stage: str = "queued",
+           actor: str, status: str = "uploaded", stage: str = "queued",
            error: str | None = None, page_count: int = 0, job_id: str | None = None) -> Document:
     assert slot in DOCUMENT_SLOTS and status in DOCUMENT_STATUSES  # noqa: S101 — programmer error
     now = utcnow()
@@ -92,7 +94,7 @@ def create(session: Session, *, document_id: str, project_id: str, slot: str, fi
         storage_backend=storage_backend, storage_key=storage_key, status=status, stage=stage,
         error=error, page_count=page_count, job_id=job_id, uploaded_by=actor,
         uploaded_at=now, updated_at=now,
-        processed_at=now if status in ("complete", "failed") else None,
+        processed_at=now if status in ("ready", "unreadable") else None,
     )
     session.add(doc)
     session.flush()
@@ -139,9 +141,10 @@ def delete(session: Session, doc: Document) -> str:
 
 def set_status(document_id: str, status: str, *, stage: str | None = None,
                error: str | None = None, page_count: int | None = None,
-               job_id: str | None = None) -> bool:
-    """Move a record along pending → processing → complete | failed. Returns
-    False (and does nothing) if the record was deleted meanwhile."""
+               job_id: str | None = None, attempt: int | None = None,
+               timings: list | None = None) -> bool:
+    """Move a record along uploaded → processing → ready | unreadable.
+    Returns False (and does nothing) if the record was deleted meanwhile."""
     assert status in DOCUMENT_STATUSES  # noqa: S101 — programmer error
     with session_scope() as session:
         doc = get(session, document_id)
@@ -150,15 +153,63 @@ def set_status(document_id: str, status: str, *, stage: str | None = None,
         doc.status = status
         if stage is not None:
             doc.stage = stage
-        if status == "failed":
+        if status == "unreadable":
             doc.error = (error or "Processing failed.")[:1000]
-        elif status == "complete":
+        elif status == "ready":
             doc.error = None
         if page_count is not None:
             doc.page_count = page_count
         if job_id is not None:
             doc.job_id = job_id
+        if attempt is not None:
+            doc.attempts = attempt
+        if timings is not None:
+            doc.timings = timings
         doc.updated_at = utcnow()
-        if status in ("complete", "failed"):
+        if status in ("ready", "unreadable"):
             doc.processed_at = doc.updated_at
         return True
+
+
+def find_by_name(session: Session, project_id: str, slot: str, filename: str) -> Document | None:
+    """The record a re-upload of the same file replaces."""
+    stmt = select(Document).where(Document.project_id == project_id, Document.slot == slot,
+                                  Document.filename == filename[:255])
+    return session.scalars(stmt).first()
+
+
+def processing_summary(session: Session, project_ids: list[str]) -> dict[str, dict[str, int]]:
+    """Per project: how many documents are still running / unreadable /
+    ready — the derived project processing status."""
+    if not project_ids:
+        return {}
+    stmt = select(Document.project_id, Document.status).where(Document.project_id.in_(project_ids))
+    out: dict[str, dict[str, int]] = {pid: {"processing": 0, "ready": 0, "unreadable": 0} for pid in project_ids}
+    for pid, status in session.execute(stmt).all():
+        bucket = "processing" if status in ("uploaded", "processing") else status
+        out.setdefault(pid, {"processing": 0, "ready": 0, "unreadable": 0})
+        out[pid][bucket] = out[pid].get(bucket, 0) + 1
+    return out
+
+
+def processing_status(summary: dict[str, int]) -> str:
+    return "processing" if summary.get("processing") else "ready"
+
+
+# ── The project's upload cards (state.files) ───────────────────────────────
+
+def update_file_entry(project_id: str, document_id: str, *, status: str, meta: str,
+                      actor: str = "system", clear_job: bool = False) -> None:
+    """Reflect a document's progress on its card in the project's working
+    document, so the screen shows it after a reload (read-modify-write
+    against the latest state)."""
+    from app.services import apply
+    from app.services import projects as projects_repo
+
+    with projects_repo.project_lock(project_id), session_scope() as session:
+        project = projects_repo.get(session, project_id, for_update=True)
+        if project is None:
+            return
+        next_state = apply.set_file_status(project.state or {}, document_id, status=status,
+                                           meta=meta, clear_job=clear_job)
+        projects_repo.patch(session, project_id, {"state": next_state}, actor)

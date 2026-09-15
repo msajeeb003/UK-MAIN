@@ -80,20 +80,26 @@ export function ProjectProvider({ projectId, children }: { projectId: string; ch
   const update = useCallback(
     (fn: (current: ProjectState) => ProjectState) => {
       const run = async () => {
-        const current = latest.current;
-        if (!current) throw new Error("Project is not loaded.");
-        const next = fn(current);
-        // Show the change immediately; the save follows.
-        latest.current = next;
-        setProject(next);
-        await projectsApi.save(next);
-        return next;
+        if (!latest.current) throw new Error("Project is not loaded.");
+        // Show the change immediately on the local copy…
+        const optimistic = fn(latest.current);
+        latest.current = optimistic;
+        setProject(optimistic);
+        // …but persist it against the latest server copy: the backend's
+        // pipeline writes columns, buyer rows and upload cards into the same
+        // document while the broker works, and must not be overwritten.
+        const fresh = await projectsApi.get(projectId);
+        const next = fn(fresh);
+        const saved = await projectsApi.save(next);
+        latest.current = saved;
+        setProject(saved);
+        return saved;
       };
       const result = chain.current.then(run, run);
       chain.current = result.catch(() => undefined);
       return result;
     },
-    [],
+    [projectId],
   );
 
   const value = useMemo<ProjectContextValue>(

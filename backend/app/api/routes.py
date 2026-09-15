@@ -32,10 +32,11 @@ from app.db.engine import session_scope
 from app.db.models import DOCUMENT_SLOTS
 from app.models.presentation import PresentationRequest
 from app.models.schemas import ExtractionResponse
+from app.services import apply
 from app.services import documents as docs
 from app.services import projects as projects_repo
 from app.services.library import active_insurers
-from app.services.pipeline import EngineOverride, FileKind, run_extraction_pipeline
+from app.services.pipeline import EngineOverride, FileKind, StepRecorder, run_extraction_pipeline
 from app.services.presentation import (
     build_limits_xlsx,
     build_pdf,
@@ -129,9 +130,24 @@ def _store_document(project_id: str, kind: str, filename: str,
             slot=kind if kind in DOCUMENT_SLOTS else "quote", filename=filename,
             content_type=docs.content_type_for(filename), size_bytes=len(file_bytes),
             storage_backend=store.backend, storage_key=key, actor=actor,
-            status="complete", stage="done", page_count=page_count,
+            status="ready", stage="done", page_count=page_count,
         )
     return doc_id
+
+
+def _persist_document(project_id: str, document_id: str, filename: str, slot: str,
+                      result: ExtractionResponse, actor: str) -> str | None:
+    """Persist step: fold the extraction into the project's working
+    document (column / buyer rows / upload card) — read-modify-write on the
+    latest state so concurrent documents never overwrite each other."""
+    with projects_repo.project_lock(project_id), session_scope() as session:
+        projects_repo.ensure(session, project_id, actor)
+        project = projects_repo.require(session, project_id, for_update=True)
+        next_state, col_id = apply.apply_result(
+            project.state or {}, document_id=document_id, filename=filename, slot=slot, result=result,
+        )
+        projects_repo.patch(session, project_id, {"state": next_state}, actor)
+    return col_id
 
 
 def _store_export(project_id: str, format: str, filename: str,
@@ -307,6 +323,7 @@ async def process_upload(
     file_bytes: bytes, filename: str, file_kind: FileKind, engine: EngineOverride,
     *, project_id: str | None, doc_kind: str | None, actor: str,
     endpoint: str = "/extract-quote", document_id: str | None = None,
+    steps: StepRecorder | None = None,
 ) -> ExtractionResponse:
     """Run the pipeline on a validated upload, retain the document against
     the project and record the audit/metrics events. Shared by the
@@ -315,14 +332,21 @@ async def process_upload(
 
     Raises HTTPException with a client-safe message on failure."""
     started = time.monotonic()
+    rec = steps or StepRecorder()
     try:
-        result = await run_extraction_pipeline(file_bytes, filename, engine, file_kind)
+        result = await run_extraction_pipeline(file_bytes, filename, engine, file_kind, steps=rec)
         if project_id and document_id:
-            # Multi-file upload: the record and the stored object already
-            # exist; mark it complete with what the pipeline learned.
-            docs.set_status(document_id, "complete", stage="done",
-                            page_count=result.meta.page_count)
+            # Document-record path: the object is already stored; persist the
+            # extraction into the project, then mark the record ready.
             result.meta.document_id = document_id
+            slot = doc_kind if doc_kind in DOCUMENT_SLOTS else "quote"
+            with rec.step("persist") as info:
+                col_id = _persist_document(project_id, document_id, filename, slot, result, actor)
+                info["column"] = col_id or "-"
+            result.meta.steps = list(rec.steps)
+            docs.set_status(document_id, "ready", stage="done",
+                            page_count=result.meta.page_count,
+                            timings=[s.model_dump() for s in rec.steps])
         elif project_id:
             result.meta.document_id = _store_document(
                 project_id, doc_kind or "quote", filename,

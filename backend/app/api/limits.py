@@ -102,6 +102,16 @@ def _view(project) -> dict:
 
 def _apply(session: Session, project, actor: str, fn, *, action: str, **detail):
     """Run a mutation; persist and audit only when something changed."""
+    with limits_lock(project.id):
+        repo.require(session, project.id, for_update=True)   # latest state, row locked
+        return _apply_locked(session, project, actor, fn, action=action, **detail)
+
+
+def limits_lock(project_id: str):
+    return repo.project_lock(project_id)
+
+
+def _apply_locked(session: Session, project, actor: str, fn, *, action: str, **detail):
     try:
         result = fn(project.state or {})
     except limits.RowNotFound as exc:

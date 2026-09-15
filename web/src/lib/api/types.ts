@@ -94,6 +94,9 @@ export interface ProjectResource {
   created_at: string;
   updated_at: string;
   generated_at: string | null;
+  /** Derived: processing while any upload is still running, else ready. */
+  processing_status: "processing" | "ready";
+  documents: { processing: number; ready: number; unreadable: number };
   /** The working document (everything in ProjectState that is not a column). */
   state: Record<string, unknown>;
 }
@@ -155,7 +158,7 @@ export type DocumentType =
 export type DocKind = "quote" | "expiring" | "limits";
 
 /** Per-file processing status of an upload (POST /projects/{id}/documents). */
-export type DocumentStatus = "pending" | "processing" | "complete" | "failed";
+export type DocumentStatus = "uploaded" | "processing" | "ready" | "unreadable";
 
 /** One uploaded file's record: where it is and how far processing got. */
 export interface DocumentRecord {
@@ -166,10 +169,14 @@ export interface DocumentRecord {
   content_type: string;
   size_bytes: number;
   status: DocumentStatus;
-  /** queued | extracting | done | failed | rejected | storage */
+  /** queued | extracting | retrying | done | failed | rejected | storage */
   stage: string;
+  /** Why the document is unreadable. */
   error: string | null;
   page_count: number;
+  attempts: number;
+  /** Per-step timings of the last run: {step, ms, ok, detail}. */
+  timings: { step: string; ms: number; ok: boolean; detail: string }[];
   /** Extraction job to poll for the result while the record is pending/processing. */
   job_id: string | null;
   storage_backend: string;
@@ -181,6 +188,8 @@ export interface DocumentRecord {
 
 export interface DocumentBatch {
   documents: DocumentRecord[];
+  /** processing while any document is still running, else ready. */
+  processing_status: "processing" | "ready";
 }
 
 /** The extracted fields (BRD 16-field list minus the two set fields). */

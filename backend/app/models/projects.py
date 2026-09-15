@@ -101,6 +101,12 @@ class InsurersReplace(BaseModel):
         return [v.strip() for v in value if v and v.strip()]
 
 
+class DocumentCounts(BaseModel):
+    processing: int = 0
+    ready: int = 0
+    unreadable: int = 0
+
+
 class ProjectOut(BaseModel):
     id: str
     client_name: str
@@ -114,6 +120,10 @@ class ProjectOut(BaseModel):
     created_at: datetime
     updated_at: datetime
     generated_at: datetime | None
+    # Derived from the document records: `processing` while any upload is
+    # still running, `ready` once every document is terminal.
+    processing_status: Literal["processing", "ready"] = "ready"
+    documents: DocumentCounts = Field(default_factory=DocumentCounts)
     state: dict
 
 

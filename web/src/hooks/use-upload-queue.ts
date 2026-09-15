@@ -4,49 +4,33 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { useProject } from "@/hooks/use-project";
-import { ApiError, documentsApi, errorMessage, extractionApi, type DocKind, type DocumentRecord, type ExtractJob } from "@/lib/api";
-import {
-  addFileEntry,
-  applyExtraction,
-  isInFlight,
-  kindLabel,
-  planUploads,
-  projectFiles,
-  removeFileEntry,
-  updateFileEntry,
-  type ProjectFile,
-  type UploadProjectState,
-} from "@/lib/uploads";
+import { ApiError, documentsApi, errorMessage, extractionApi, type DocKind, type ExtractJob } from "@/lib/api";
+import { isInFlight, planUploads, projectFiles, type ProjectFile, type UploadProjectState } from "@/lib/uploads";
 
 const POLL_MS = 1500;
 const POLL_MAX_MS = 6000;
 const JOB_TIMEOUT_MS = 10 * 60_000;
 
 export interface UploadQueue {
-  /** Add files to a slot: validates, records entries, uploads, then polls. */
+  /** Add files to a slot: validates, uploads the batch, then follows each job. */
   enqueue: (kind: DocKind, files: File[]) => Promise<void>;
-  /** Drop a failed entry from the list. */
+  /** Drop a failed entry from the list (and its stored document). */
   remove: (entry: ProjectFile) => Promise<void>;
   /** Ids of entries whose extraction is being polled right now. */
   polling: ReadonlySet<string>;
 }
 
-function stageLabel(job: ExtractJob): string {
-  if (job.status === "queued") return "queued · waiting for a slot";
-  if (job.stage === "extracting") return "processing · reading and extracting";
-  return job.status;
-}
-
 /**
- * Upload orchestration for S4. Each file becomes an entry in the project's
- * `files` list at once (so the list survives navigation and reloads), the
- * file is posted to `/extract-jobs`, and the job is polled until it finishes;
- * the result is folded into the comparison with `applyExtraction`. Entries
- * still in flight when the screen mounts (a reload, another tab) resume
- * polling automatically.
+ * Upload orchestration for S4. The backend owns the whole lifecycle: the
+ * upload creates one record and one upload card per file, a background job
+ * per document runs the pipeline and writes its progress, its result (the
+ * comparison column / buyer rows) and its card status into the project.
+ * This hook only sends the files, follows each job, and reloads the project
+ * whenever something changed — it never writes extraction results itself,
+ * so a job finishing while the broker works can never be overwritten.
  */
 export function useUploadQueue(): UploadQueue {
-  const { project, update } = useProject();
+  const { project, reload } = useProject();
   const [polling, setPolling] = useState<ReadonlySet<string>>(() => new Set());
   const timers = useRef(new Map<string, number>());
   const aborts = useRef(new Map<string, AbortController>());
@@ -61,20 +45,6 @@ export function useUploadQueue(): UploadQueue {
     });
   }, []);
 
-  const finishError = useCallback(
-    async (entry: ProjectFile, message: string) => {
-      await update((p) =>
-        updateFileEntry(p as UploadProjectState, entry.id, {
-          status: "error",
-          meta: `${kindLabel(entry.kind)} · ${message}`,
-          jobId: null,
-          progress: undefined,
-        }),
-      );
-    },
-    [update],
-  );
-
   const pollJob = useCallback(
     (entry: ProjectFile, jobId: string) => {
       if (timers.current.has(entry.id)) return;
@@ -84,6 +54,7 @@ export function useUploadQueue(): UploadQueue {
       const startedAt = Date.now();
       let delay = POLL_MS;
       let misses = 0;
+      let lastSeen = "";
 
       const stop = () => {
         const t = timers.current.get(entry.id);
@@ -96,35 +67,32 @@ export function useUploadQueue(): UploadQueue {
       const tick = async () => {
         if (controller.signal.aborted) return stop();
         try {
-          const job = await extractionApi.getJob(jobId, controller.signal);
+          const job: ExtractJob = await extractionApi.getJob(jobId, controller.signal);
           misses = 0;
-          if (job.status === "done" && job.result) {
+          if (job.status === "done") {
             stop();
-            const result = job.result;
-            await update((p) => applyExtraction(p as UploadProjectState, entry.id, result, entry.kind));
+            reload();
             toast.success(`${entry.name} extracted`);
             return;
           }
           if (job.status === "error") {
             stop();
-            await finishError(entry, job.error || "extraction failed");
-            toast.error(`${entry.name}: ${job.error || "extraction failed"}`);
+            reload();
+            toast.error(`${entry.name}: ${job.error || "unreadable"}`);
             return;
           }
-          const label = stageLabel(job);
-          await update((p) => {
-            const current = projectFiles(p as UploadProjectState).find((f) => f.id === entry.id);
-            if (!current || current.meta.endsWith(label)) return p;
-            return updateFileEntry(p as UploadProjectState, entry.id, {
-              status: job.status === "queued" ? "queued" : "processing",
-              meta: `${kindLabel(entry.kind)} · ${label}`,
-            });
-          });
+          // The worker keeps the card's status/label current in the project;
+          // pick it up when the stage changes.
+          const seen = `${job.status}:${job.stage}`;
+          if (seen !== lastSeen) {
+            lastSeen = seen;
+            reload();
+          }
         } catch (err) {
           if (controller.signal.aborted) return stop();
           if (err instanceof ApiError && err.status === 404) {
             stop();
-            await finishError(entry, "job expired on the server; upload the file again");
+            reload();
             return;
           }
           // Transient (network, 5xx): back off and keep trying for a while.
@@ -132,13 +100,13 @@ export function useUploadQueue(): UploadQueue {
           delay = Math.min(POLL_MAX_MS, delay * 1.5);
           if (misses >= 8) {
             stop();
-            await finishError(entry, `lost contact with the server (${errorMessage(err)})`);
+            toast.error(`${entry.name}: lost contact with the server (${errorMessage(err)})`);
             return;
           }
         }
         if (Date.now() - startedAt > JOB_TIMEOUT_MS) {
           stop();
-          await finishError(entry, "timed out after 10 minutes; try again");
+          reload();
           return;
         }
         timers.current.set(entry.id, window.setTimeout(tick, delay));
@@ -146,24 +114,28 @@ export function useUploadQueue(): UploadQueue {
 
       timers.current.set(entry.id, window.setTimeout(tick, delay));
     },
-    [finishError, markPolling, update],
+    [markPolling, reload],
   );
 
-  // Resume polling for entries that were in flight when this screen mounted.
+  // Follow every in-flight card (after an upload, a reload, another tab).
   const projectId = project?.id;
+  const inFlightKey = project
+    ? projectFiles(project as UploadProjectState)
+        .filter((f) => isInFlight(f) && f.jobId)
+        .map((f) => `${f.id}:${f.jobId}`)
+        .join(",")
+    : "";
   useEffect(() => {
     if (!project) return;
     for (const f of projectFiles(project as UploadProjectState)) {
-      if ((f.status === "queued" || f.status === "processing") && f.jobId && !timers.current.has(f.id)) {
-        pollJob(f, f.jobId);
-      }
+      if (isInFlight(f) && f.jobId && !timers.current.has(f.id)) pollJob(f, f.jobId);
     }
-    // Only re-run when the project identity changes, not on every save.
+    // Re-run when the set of in-flight cards changes, not on every save.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId, pollJob]);
+  }, [projectId, inFlightKey, pollJob]);
 
-  // Stop timers on unmount; the entries stay "processing" in the saved
-  // state and resume when the screen is opened again.
+  // Stop timers on unmount; the cards keep their status in the project and
+  // are followed again when the screen is opened.
   useEffect(() => {
     const timerMap = timers.current;
     const abortMap = aborts.current;
@@ -174,64 +146,6 @@ export function useUploadQueue(): UploadQueue {
       abortMap.clear();
     };
   }, []);
-
-  /**
-   * One request for the whole batch (POST /projects/{id}/documents): each
-   * file gets a list entry first so the cards show at once and survive a
-   * reload, then the server's per-file records decide what happens next —
-   * poll the job for accepted files, flag rejected ones.
-   */
-  const uploadBatch = useCallback(
-    async (kind: DocKind, files: File[]) => {
-      const entries: ProjectFile[] = [];
-      let projectId = "";
-      for (const file of files) {
-        const withEntry = await update((p) => {
-          const { project: next, entry } = addFileEntry(p as UploadProjectState, kind, file);
-          entries.push(entry);
-          return next;
-        });
-        projectId = withEntry.id;
-      }
-      let records: DocumentRecord[];
-      try {
-        records = await documentsApi.upload(projectId, kind, files);
-      } catch (err) {
-        // 401/403 already routed to the login page by the API client; the
-        // documents are fine, so drop the cards instead of flagging them.
-        if (err instanceof ApiError && err.isUnauthorized) {
-          for (const entry of entries) {
-            await update((p) => removeFileEntry(p as UploadProjectState, entry.id)).catch(() => undefined);
-          }
-          return;
-        }
-        const message = errorMessage(err, "upload failed");
-        for (const entry of entries) await finishError(entry, message);
-        return;
-      }
-      for (const [i, entry] of entries.entries()) {
-        const record = records[i];
-        if (!record || record.status === "failed" || !record.job_id) {
-          const reason = record?.error || "rejected by the server";
-          await finishError(entry, reason);
-          toast.error(`${entry.name}: ${reason}`);
-          continue;
-        }
-        const processing = record.status === "processing";
-        await update((p) =>
-          updateFileEntry(p as UploadProjectState, entry.id, {
-            status: processing ? "processing" : "queued",
-            meta: `${kindLabel(kind)} · ${processing ? "processing · reading and extracting" : "queued · waiting for a slot"}`,
-            jobId: record.job_id,
-            docId: record.id,
-            progress: undefined,
-          }),
-        );
-        pollJob(entry, record.job_id);
-      }
-    },
-    [finishError, pollJob, update],
-  );
 
   const enqueue = useCallback(
     async (kind: DocKind, files: File[]) => {
@@ -244,28 +158,38 @@ export function useUploadQueue(): UploadQueue {
         });
       }
       if (plan.retried.length) toast.info(`Retrying ${plan.retried.join(", ")}`);
-      // One multipart request for the batch; the backend queues the extractions.
-      if (plan.accepted.length) await uploadBatch(kind, plan.accepted);
+      if (!plan.accepted.length) return;
+      try {
+        // One multipart request for the batch; the backend creates the cards
+        // and queues the extractions. Reloading shows them (and starts polling).
+        const records = await documentsApi.upload(project.id, kind, plan.accepted);
+        for (const record of records) {
+          if (record.status === "unreadable") toast.error(`${record.filename}: ${record.error || "rejected"}`);
+        }
+      } catch (err) {
+        if (!(err instanceof ApiError && err.isUnauthorized)) toast.error(errorMessage(err, "Upload failed"));
+      } finally {
+        reload();
+      }
     },
-    [project, uploadBatch],
+    [project, reload],
   );
 
   const remove = useCallback(
     async (entry: ProjectFile) => {
-      if (isInFlight(entry)) return;
-      if (entry.docId && project) {
-        try {
-          await documentsApi.remove(project.id, entry.docId);
-        } catch (err) {
-          if (!(err instanceof ApiError && err.status === 404)) {
-            toast.error(errorMessage(err, "Could not remove the document"));
-            return;
-          }
+      if (isInFlight(entry) || !project) return;
+      const docId = entry.docId ?? entry.id;
+      try {
+        await documentsApi.remove(project.id, docId);
+      } catch (err) {
+        if (!(err instanceof ApiError && err.status === 404)) {
+          toast.error(errorMessage(err, "Could not remove the document"));
+          return;
         }
       }
-      await update((p) => removeFileEntry(p as UploadProjectState, entry.id));
+      reload();
     },
-    [project, update],
+    [project, reload],
   );
 
   return { enqueue, remove, polling };

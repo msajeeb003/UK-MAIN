@@ -118,6 +118,12 @@ def _view(project) -> dict:
 def _apply(session: Session, project, actor: str, fn, *, action: str, **detail) -> bool:
     """Run a grid mutation; persist and audit only when something changed.
     Translates the rule errors to HTTP statuses."""
+    with repo.project_lock(project.id):
+        return _apply_locked(session, project, actor, fn, action=action, **detail)
+
+
+def _apply_locked(session: Session, project, actor: str, fn, *, action: str, **detail) -> bool:
+    repo.require(session, project.id, for_update=True)      # latest state, row locked
     try:
         next_state = fn(project.state or {})
     except grid.ColumnNotFound as exc:

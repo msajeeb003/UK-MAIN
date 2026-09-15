@@ -30,6 +30,7 @@ from app.models.projects import (
     ProjectReplace,
     SortKey,
 )
+from app.services import documents as docs
 from app.services import projects as repo
 
 logger = logging.getLogger(__name__)
@@ -39,6 +40,22 @@ router = APIRouter(dependencies=[Depends(require_user)])
 _ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}")
 User = Annotated[dict, Depends(require_user)]
 Db = Annotated[Session, Depends(get_session)]
+
+
+def _out(session: Session, project) -> dict:
+    """The resource plus the derived processing status (BRD S4: `processing`
+    while any document is still running, `ready` once all are terminal)."""
+    return _outs(session, [project])[0]
+
+
+def _outs(session: Session, projects: list) -> list[dict]:
+    summary = docs.processing_summary(session, [p.id for p in projects])
+    out = []
+    for p in projects:
+        counts = summary.get(p.id, {"processing": 0, "ready": 0, "unreadable": 0})
+        out.append({**repo.serialize(p), "processing_status": docs.processing_status(counts),
+                    "documents": counts})
+    return out
 
 
 def _audit_save(project, actor: str, created: bool) -> None:
@@ -54,11 +71,17 @@ def _audit_save(project, actor: str, created: bool) -> None:
     )
 
 
-def _write(session: Session, fn):
+def _write(session: Session, fn, project_id: str | None = None):
     """Run a repository write, translating its errors to HTTP statuses."""
     try:
-        result = fn()
-        session.commit()
+        if project_id:
+            with repo.project_lock(project_id):
+                repo.get(session, project_id, for_update=True)   # row lock for the RMW
+                result = fn()
+                session.commit()
+        else:
+            result = fn()
+            session.commit()
         return result
     except repo.ProjectNotFound as exc:
         session.rollback()
@@ -97,8 +120,7 @@ def list_projects(
         session, q=q, status=status_filter, project_type=project_type, insurer=insurer,
         sort=sort, limit=limit, offset=offset,
     )
-    return {"items": [repo.serialize(p) for p in items], "total": total,
-            "limit": limit, "offset": offset}
+    return {"items": _outs(session, items), "total": total, "limit": limit, "offset": offset}
 
 
 @router.post("/projects", response_model=ProjectOut, status_code=status.HTTP_201_CREATED)
@@ -106,7 +128,7 @@ def create_project(body: ProjectCreate, session: Db, user: User) -> dict:
     data = body.model_dump(exclude={"id"})
     project = _write(session, lambda: repo.create(session, data, user["email"], project_id=body.id))
     _audit_save(project, user["email"], created=True)
-    return repo.serialize(project)
+    return _out(session, project)
 
 
 # ── Item ───────────────────────────────────────────────────────────────────
@@ -116,7 +138,7 @@ def get_project(project_id: str, session: Db) -> dict:
     project = repo.get(session, project_id)
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found.")
-    return repo.serialize(project)
+    return _out(session, project)
 
 
 @router.put("/projects/{project_id}", response_model=ProjectOut)
@@ -126,20 +148,21 @@ def replace_project(project_id: str, body: ProjectReplace, session: Db, user: Us
     if not _ID_RE.fullmatch(project_id):
         raise HTTPException(status_code=422, detail="Invalid project id.")
     project, created = _write(
-        session, lambda: repo.upsert(session, project_id, body.model_dump(), user["email"]))
+        session, lambda: repo.upsert(session, project_id, body.model_dump(), user["email"]),
+        project_id=project_id)
     if created:
         response.status_code = status.HTTP_201_CREATED
     _audit_save(project, user["email"], created=created)
-    return repo.serialize(project)
+    return _out(session, project)
 
 
 @router.patch("/projects/{project_id}", response_model=ProjectOut)
 def update_project(project_id: str, body: ProjectPatch, session: Db, user: User) -> dict:
     """Change only the fields present in the body."""
     data = body.model_dump(exclude_unset=True)
-    project = _write(session, lambda: repo.patch(session, project_id, data, user["email"]))
+    project = _write(session, lambda: repo.patch(session, project_id, data, user["email"]), project_id=project_id)
     _audit_save(project, user["email"], created=False)
-    return repo.serialize(project)
+    return _out(session, project)
 
 
 def delete_project_data(project_id: str) -> None:

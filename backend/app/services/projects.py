@@ -9,7 +9,9 @@ from __future__ import annotations
 import json
 import logging
 import secrets
-from collections.abc import Iterable
+import threading
+from collections.abc import Iterable, Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime
 
 from sqlalchemy import exists, func, or_, select
@@ -128,14 +130,39 @@ def serialize(project: Project) -> dict:
     }
 
 
+# ── Write serialisation ────────────────────────────────────────────────────
+# The working document is one JSON value that several writers touch
+# concurrently: the broker's screen, and one pipeline job per uploaded
+# document (columns, buyer rows, upload cards). Every server-side
+# read-modify-write holds the project's lock — in-process for the threads
+# of one worker, and a row lock (SELECT … FOR UPDATE, PostgreSQL) across
+# gunicorn workers — so a finishing job never overwrites another's result.
+
+_locks_guard = threading.Lock()
+_locks: dict[str, threading.RLock] = {}
+
+
+@contextmanager
+def project_lock(project_id: str) -> Iterator[None]:
+    with _locks_guard:
+        lock = _locks.setdefault(project_id, threading.RLock())
+    with lock:
+        yield
+
+
 # ── CRUD ───────────────────────────────────────────────────────────────────
 
-def get(session: Session, project_id: str) -> Project | None:
-    return session.get(Project, project_id)
+def get(session: Session, project_id: str, *, for_update: bool = False) -> Project | None:
+    """Load a project; `for_update` takes the row lock (PostgreSQL) and
+    refreshes the copy so a read-modify-write starts from the latest state."""
+    project = session.get(Project, project_id)
+    if project is not None and for_update:
+        session.refresh(project, with_for_update=True)
+    return project
 
 
-def require(session: Session, project_id: str) -> Project:
-    project = get(session, project_id)
+def require(session: Session, project_id: str, *, for_update: bool = False) -> Project:
+    project = get(session, project_id, for_update=for_update)
     if project is None:
         raise ProjectNotFound(project_id)
     return project

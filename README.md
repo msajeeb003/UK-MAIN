@@ -152,6 +152,7 @@ file under `DATA_DIR` for development and tests.
 | `POST` `DELETE` | `/projects/{id}/insurers/{insurer_id}` | add one · remove one |
 | `POST` | `/projects/{id}/documents` (`files[]`, `slot`) | multi-file upload into a slot → 202, one record per file with `status` pending/processing/complete/failed |
 | `GET` `DELETE` | `/projects/{id}/documents[/{doc}]` | list / poll a record · remove it and its stored file |
+| `POST` | `/projects/{id}/documents/{doc}/rerun` | re-run the pipeline on a stored file (broker edits survive) |
 | `GET` | `/projects/{id}/grid` | the 16-row comparison grid with cell provenance, confirmations and the export gate |
 | `PATCH` `DELETE` | `/projects/{id}/grid/columns/{col}/cells/{field}` | edit one cell (keeps the AI original) · revert it |
 | `PUT` `DELETE` | `/projects/{id}/grid/columns/{col}/set-fields/{field}` | per-column override of the set fields `type` / `debt` · clear it |

@@ -13,6 +13,9 @@ class PipelineError(Exception):
     """Base class — `str(exc)` is safe to return to API clients."""
 
     status_code = 500
+    # True when a retry may succeed (rate limit, timeout, network blip);
+    # the background job retries such failures once.
+    transient = False
 
 
 class InvalidDocumentError(PipelineError):
@@ -31,6 +34,13 @@ class UpstreamServiceError(PipelineError):
     """OpenAI / Azure failed or returned something unusable."""
 
     status_code = 502
+
+
+class TransientUpstreamError(UpstreamServiceError):
+    """A provider problem worth one retry: rate limit (429), timeout,
+    connection error."""
+
+    transient = True
 
 
 class ExportBlockedError(PipelineError):

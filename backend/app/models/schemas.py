@@ -215,6 +215,15 @@ class SetFields(BaseModel):
 #  API-facing response models
 # ─────────────────────────────────────────────────────────────────────────
 
+class StepTiming(BaseModel):
+    """One pipeline step's outcome and duration (accuracy work, ART-330)."""
+
+    step: str
+    ms: int
+    ok: bool = True
+    detail: str = ""
+
+
 class ProcessingMeta(BaseModel):
     """How the document was processed — pilot debugging across formats."""
 
@@ -233,6 +242,10 @@ class ProcessingMeta(BaseModel):
         "pymupdf", "azure_document_intelligence", "docling", "excel"
     ]
     llm_model: str
+    steps: list[StepTiming] = Field(
+        default_factory=list,
+        description="Per-step timings and outcomes of the pipeline run.",
+    )
 
 
 class ReviewSummary(BaseModel):
