@@ -16,8 +16,15 @@ TEST_USER = ("broker@test.local", "correct-horse-9")
 
 @pytest.fixture(scope="session", autouse=True)
 def _isolated_data_dir(tmp_path_factory):
-    """Point the SQLite database and file storage at a per-run temp dir."""
+    """Point the SQLite database and file storage at a per-run temp dir.
+
+    The suite creates and deletes projects freely, so it must never run
+    against a real DATABASE_URL / Supabase Storage from the operator's .env:
+    force the SQLite and local-file fallbacks unless TEST_DATABASE_URL is
+    given deliberately."""
     os.environ["DATA_DIR"] = str(tmp_path_factory.mktemp("data"))
+    os.environ["DATABASE_URL"] = os.environ.get("TEST_DATABASE_URL", "")
+    os.environ["SUPABASE_SERVICE_ROLE_KEY"] = ""
     from app.core.config import get_settings
     get_settings.cache_clear()
     yield

@@ -10,11 +10,19 @@ SQLite file at `DATA_DIR/app.db` — see `app/core/db.py`.
 
 | Variable | Meaning |
 |---|---|
-| `DATABASE_URL` | `postgresql://user:pass@host:port/db` — production. Supabase's *Connect → URI* string works verbatim (the transaction-mode pooler on port 6543 is supported; server-side prepared statements are disabled for it). |
+| `DATABASE_URL` | `postgresql://user:pass@host:port/db` — production. Supabase's *Connect → URI* string works verbatim (the transaction-mode pooler on port 6543 is supported; server-side prepared statements are disabled for it). Percent-encode special characters in the password (`!` → `%21`, `+` → `%2B`, `@` → `%40`). |
 | *(empty)* | Development / tests: a SQLite file at `DATA_DIR/projects.db`, same schema, same code. |
 
 In `APP_ENV=production` the process refuses to boot unless `DATABASE_URL`
 points at PostgreSQL.
+
+**Which Supabase host.** The direct host `db.<ref>.supabase.co:5432` has an
+IPv6 address only; from an IPv4-only network (most laptops, some hosts)
+use the **session pooler** instead — `aws-<n>-<region>.pooler.supabase.com`
+port 5432 with user `postgres.<ref>` (Dashboard → Connect → *Session
+pooler*). Both work with this code. The test suite always uses the SQLite
+fallback regardless of `.env` (it creates and deletes projects freely);
+set `TEST_DATABASE_URL` only to run it against a throwaway database.
 
 ## Schema (`app/db/models.py`)
 
