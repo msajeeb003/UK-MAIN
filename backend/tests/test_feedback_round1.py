@@ -156,6 +156,8 @@ def test_money_formatter(raw, expected):
     ("GBP 350 for 25 limits", "£350 / 25 limits"),
     ("£350 / 1 limit", "£350 / 1 limit"),
     ("£2,300 Fixed Charge", "£2,300"),          # no count stated: amount alone
+    ("900 for 20 Credit Limits, then £45 each", "£900 / 20 limits"),   # bare leading figure is the amount
+    ("20 limits included", "20 limits included"),                    # the figure is the count: verbatim
     ("£45 per limit", "£45 per limit"),         # a rate, not a fixed charge
     ("Included", "Included"),                   # no amount: verbatim
     ("", ""),
@@ -425,7 +427,11 @@ def test_rename_columns_relabels_identified_headings_only(client):
     assert rename_column({"id": "4", "name": "Allianz (option 2)", "matched": "Allianz Trade", "manual": False}) is None  # broker's heading
     assert rename_column({"id": "5", "name": "Free-format column", "manual": True}) is None
     assert rename_column({"id": "6", "name": "Some Unknown Underwriter", "matched": None, "manual": False}) is None
-    assert rename_column({"id": "7", "name": "Allianz", "matched": "Allianz", "manual": False}) is None
+    assert rename_column({"id": "7", "name": "Allianz", "matched": "Allianz", "manual": False, "debt": "Included"}) is None
+    # The rule default follows the config change too (Cartan now "Inclusive collections").
+    cartan = rename_column({"id": "8", "name": "Cartan", "matched": "Cartan", "manual": False, "debt": "Outsourced",
+                            "data": {"debt": {"value": "Outsourced", "orig": ""}}})
+    assert cartan["debt"] == "Inclusive collections" and cartan["data"]["debt"]["value"] == "Outsourced"  # override kept
 
     state = {"columns": [
         {"id": "a", "name": "Allianz Trade", "matched": "Allianz Trade", "manual": False, "data": {}},

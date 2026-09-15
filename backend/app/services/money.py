@@ -25,6 +25,11 @@ _LIMIT_COUNT = re.compile(
 )
 # A rate per limit ("£45 per limit") is not a fixed charge — kept verbatim.
 _PER_LIMIT = re.compile(r"\b(?:per|each|every|a)\s+(?:credit\s+)?limit\b", re.I)
+# A bare figure that opens the text is the amount unless it is itself the
+# limit count ("900 for 20 Credit Limits" -> £900; "20 limits included" -> as is).
+_LEADING_AMOUNT = re.compile(
+    r"^\s*(\d[\d,]*)\b(?:\.(\d+))?(?!\s*(?:(?:active|approved|agreed|credit|buyer|new)\s+)?limits?\b)", re.I,
+)
 
 # BRD 2.3 rows that hold a money amount (B2). Credit-limit charges have
 # their own rule (B4). Premium rate is a percentage and is not touched.
@@ -65,7 +70,7 @@ def format_charges(value: str | None) -> str:
         return format_money(text)
     if _PER_LIMIT.search(text):
         return text
-    m = _MONEY_IN_TEXT.search(text)
+    m = _LEADING_AMOUNT.match(text) or _MONEY_IN_TEXT.search(text)
     if not m:
         return text
     amount = _pounds(m.group(1), m.group(2))

@@ -23,7 +23,7 @@ from sqlalchemy import select
 from app.db.engine import session_scope
 from app.db.models import Project
 from app.services import projects as projects_repo
-from app.services.library import get_insurers, match_insurer
+from app.services.library import debt_collection_rule, get_insurers, match_insurer
 
 logger = logging.getLogger(__name__)
 
@@ -60,9 +60,12 @@ def rename_column(col: dict, files: list[dict] | None = None) -> dict | None:
     if bare.lower() not in known and not _document_wording({**col, "name": bare}, files or []):
         return None                                   # broker-typed heading: keep it
     target = (EXPIRING_PREFIX + insurer["name"]) if expiring else insurer["name"]
-    if name == target and col.get("matched") == insurer["name"]:
+    # The set-field default follows the current rule config (a broker's
+    # per-column override lives in data.debt and is untouched).
+    debt = debt_collection_rule(insurer["name"])[0]
+    if name == target and col.get("matched") == insurer["name"] and col.get("debt") == debt:
         return None
-    return {**col, "name": target, "matched": insurer["name"]}
+    return {**col, "name": target, "matched": insurer["name"], "debt": debt}
 
 
 def rename_columns(dry_run: bool = False) -> list[tuple[str, str, str]]:

@@ -14,6 +14,8 @@ const PLAIN_MONEY = /^\s*(?:£|gbp)?\s*(\d[\d,]*)(?:\.(\d+))?\s*$/i;
 const MONEY_IN_TEXT = /(?:£|gbp)\s*(\d[\d,]*)(?:\.(\d+))?/i;
 const LIMIT_COUNT = /\b(\d{1,4})\s+(?:(?:active|approved|agreed|credit|buyer|new)\s+)?limits?\b/i;
 const PER_LIMIT = /\b(?:per|each|every|a)\s+(?:credit\s+)?limit\b/i;
+// A bare figure that opens the text is the amount unless it is itself the limit count.
+const LEADING_AMOUNT = /^\s*(\d[\d,]*)\b(?:\.(\d+))?(?!\s*(?:(?:active|approved|agreed|credit|buyer|new)\s+)?limits?\b)/i;
 
 /** BRD 2.3 rows that hold a money amount. Premium rate is a percentage. */
 export const MONEY_FIELDS: ReadonlySet<string> = new Set([
@@ -48,7 +50,7 @@ export function formatCharges(value: string | null | undefined): string {
   if (!text) return "";
   if (PLAIN_MONEY.test(text)) return formatMoney(text);
   if (PER_LIMIT.test(text)) return text;
-  const m = text.match(MONEY_IN_TEXT);
+  const m = text.match(LEADING_AMOUNT) ?? text.match(MONEY_IN_TEXT);
   if (!m) return text;
   const amount = pounds(m[1], m[2]);
   const count = text.match(LIMIT_COUNT);
