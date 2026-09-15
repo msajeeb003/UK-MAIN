@@ -9,7 +9,7 @@
 # installed by default — scanned PDFs then need Azure keys, or rebuild
 # with:  docker build --build-arg INSTALL_OCR=1 .
 
-FROM python:3.12-slim
+FROM python:3.14-slim
 
 # Patch base-image OS packages so the image ships without known fixable
 # HIGH/CRITICAL CVEs (enforced by the Trivy scan in CI).
