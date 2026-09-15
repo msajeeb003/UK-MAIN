@@ -386,8 +386,12 @@ def build_pptx(req: PresentationRequest) -> bytes:
     slide = prs.slides.add_slide(blank)
     _corner(slide, mirrored=True)
     _textbox(slide, 0, 12, SLIDE_W, 56, [("Feedback of Terms", True)], size=38, align=PP_ALIGN.CENTER)
-    body: list[tuple] = [(_text("feedback_intro"), False), ("", False),
-                         (_text("fair_presentation"), False), ("", False),
+    # The corner graphics reach ~209 pt in from each side over the top 150 pt,
+    # so the intro sits in a narrower box between them (as the template sets
+    # its short opening lines) and the long paragraphs start below them.
+    _textbox(slide, 270, 74, SLIDE_W - 540, 70, _text("feedback_intro"), size=16,
+             align=PP_ALIGN.CENTER, line_spacing=1.3)
+    body: list[tuple] = [(_text("fair_presentation"), False), ("", False),
                          ("TERMS", True), ("", False),
                          (_text("terms_notes"), False), ("", False)]
     approached = _approached_sentence(req)
@@ -397,9 +401,7 @@ def build_pptx(req: PresentationRequest) -> bytes:
     if declined_line:
         body += [(declined_line, True), ("", False)]
     body += [(p, False) for p in _important_information().split("\n")]
-    # Inset from the corner graphics (they reach 209 pt in from each side at
-    # the top); the template's lines are set with the same clearance.
-    _textbox(slide, 110, 74, SLIDE_W - 220, 730, body, size=16, align=PP_ALIGN.CENTER,
+    _textbox(slide, 40, 152, SLIDE_W - 80, 650, body, size=16, align=PP_ALIGN.CENTER,
              line_spacing=1.3)
 
     # ── 4. Terms Comparison ──────────────────────────────────────────────
