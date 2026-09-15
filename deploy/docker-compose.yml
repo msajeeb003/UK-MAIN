@@ -48,6 +48,8 @@ services:
         NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
         NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}
         NEXT_PUBLIC_API_BASE_URL: /api
+        # Baked into the standalone server's /api rewrite; see web/Dockerfile.
+        BACKEND_URL: http://backend:8000
     image: quote-tool-web:local
     restart: unless-stopped
     env_file: ../web.env

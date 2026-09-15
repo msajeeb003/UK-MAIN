@@ -6,8 +6,9 @@
 #     --build-arg NEXT_PUBLIC_SUPABASE_URL=https://<ref>.supabase.co \
 #     --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY=<anon key> web
 #
-# NEXT_PUBLIC_* values are baked in at build time (they are public by
-# design); BACKEND_URL is read at runtime.
+# NEXT_PUBLIC_* values and BACKEND_URL are all baked in at build time. The
+# NEXT_PUBLIC_* ones are public by design; BACKEND_URL is a private address
+# on the container network rather than a secret.
 
 FROM node:22-alpine AS deps
 WORKDIR /app
@@ -21,9 +22,15 @@ COPY . .
 ARG NEXT_PUBLIC_SUPABASE_URL
 ARG NEXT_PUBLIC_SUPABASE_ANON_KEY
 ARG NEXT_PUBLIC_API_BASE_URL=/api
+# next.config.ts reads BACKEND_URL when the config is evaluated, and with
+# output: "standalone" that happens at BUILD time: the /api rewrite
+# destination is baked into required-server-files.json. Supplying it only
+# at runtime is too late, so it has to be a build argument as well.
+ARG BACKEND_URL=http://backend:8000
 ENV NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL \
     NEXT_PUBLIC_SUPABASE_ANON_KEY=$NEXT_PUBLIC_SUPABASE_ANON_KEY \
     NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL \
+    BACKEND_URL=$BACKEND_URL \
     NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
 
