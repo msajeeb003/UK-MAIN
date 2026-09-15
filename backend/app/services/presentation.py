@@ -389,7 +389,7 @@ def build_pptx(req: PresentationRequest) -> bytes:
     # The corner graphics reach ~209 pt in from each side over the top 150 pt,
     # so the intro sits in a narrower box between them (as the template sets
     # its short opening lines) and the long paragraphs start below them.
-    _textbox(slide, 270, 74, SLIDE_W - 540, 70, _text("feedback_intro"), size=16,
+    _textbox(slide, 240, 74, SLIDE_W - 480, 70, _text("feedback_intro"), size=16,
              align=PP_ALIGN.CENTER, line_spacing=1.3)
     body: list[tuple] = [(_text("fair_presentation"), False), ("", False),
                          ("TERMS", True), ("", False),
@@ -401,7 +401,7 @@ def build_pptx(req: PresentationRequest) -> bytes:
     if declined_line:
         body += [(declined_line, True), ("", False)]
     body += [(p, False) for p in _important_information().split("\n")]
-    _textbox(slide, 40, 152, SLIDE_W - 80, 650, body, size=16, align=PP_ALIGN.CENTER,
+    _textbox(slide, 90, 156, SLIDE_W - 180, 640, body, size=16, align=PP_ALIGN.CENTER,
              line_spacing=1.3)
 
     # ── 4. Terms Comparison ──────────────────────────────────────────────
