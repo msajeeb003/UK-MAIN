@@ -1,0 +1,2 @@
+# Static assets served at the site root. Kept so the directory exists in
+# a fresh clone, which the container build copies.
