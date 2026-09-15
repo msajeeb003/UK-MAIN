@@ -113,6 +113,31 @@ audited by field/column, never by value. The web app still autosaves the
 whole `state`; a stale save can overwrite a server-side edit made in
 between — no optimistic-concurrency check exists yet.
 
+## Credit limits (`app/services/limits.py`, `app/api/limits.py`)
+
+The buyer × insurer table (BRD 2.6) lives in `state.credit` (rows),
+`state.columns` (one column per insurer with a quote — the expiring policy
+is not one) and `state.limitsHidden`, as the S6 screen stores them. Money
+rule shared with the screen: numeric text → full pounds `£1,234,567`;
+zero / nil / declined → `0` (a declined limit, distinct from blank);
+other wording kept verbatim. Totals sum what parses.
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/projects/{id}/limits` | Columns, hidden columns, rows (each cell: `value`, `provenance` extracted/edited/manual/blank, `amount`, `declined`), totals, `has_data`. |
+| `POST` | `/projects/{id}/limits/rows` `{buyer, company_number, required, offers}` | Add a buyer → 201 with `Location`. |
+| `PATCH` | `/projects/{id}/limits/rows/{row}` | Change buyer / company number / required limit. |
+| `DELETE` | `/projects/{id}/limits/rows/{row}` | Remove the buyer → 204. |
+| `PUT` / `DELETE` | `/projects/{id}/limits/rows/{row}/offers/{col}` `{value}` | Set / clear one insurer's offered limit for the buyer. |
+| `PUT` | `/projects/{id}/limits/columns/{col}` `{hidden}` | Hide an insurer from the table (drops its offers) or restore it. |
+| `GET` | `/projects/{id}/limits/export/xlsx` | Editable Excel workbook (values as typed, totals as formulas). |
+| `GET` | `/projects/{id}/limits/export/pdf` | Editable PDF: every value cell is a text form field; totals printed. |
+
+Downloads are built from the current table on each request, named
+`Credit Limits - {Client}.{ext}`, and answer 409 when the table has no
+content. The presentation's own credit-limit page and its `limits-xlsx`
+export (S8) are unchanged.
+
 ## Migration from the blob table
 
 Before this store existed, projects were one JSON blob per row in the SQLite

@@ -156,6 +156,10 @@ file under `DATA_DIR` for development and tests.
 | `PATCH` `DELETE` | `/projects/{id}/grid/columns/{col}/cells/{field}` | edit one cell (keeps the AI original) · revert it |
 | `PUT` `DELETE` | `/projects/{id}/grid/columns/{col}/set-fields/{field}` | per-column override of the set fields `type` / `debt` · clear it |
 | `GET` `PUT` | `/projects/{id}/grid/confirmations[/{field}]` | the four gated confirmations (premium, indemnity, excess, max liability) |
+| `GET` | `/projects/{id}/limits` | the credit-limits table: buyer rows × insurer columns with totals |
+| `POST` `PATCH` `DELETE` | `/projects/{id}/limits/rows[/{row}]` | add · edit · remove a buyer row |
+| `PUT` `DELETE` | `/projects/{id}/limits/rows/{row}/offers/{col}` | set · clear one insurer's offered limit |
+| `GET` | `/projects/{id}/limits/export/{xlsx\|pdf}` | download the table as an editable Excel workbook or form-field PDF |
 
 Uploaded files live in **Supabase Storage** (`SUPABASE_SERVICE_ROLE_KEY`,
 `SUPABASE_STORAGE_BUCKET`; local files under `DATA_DIR` when unset).
