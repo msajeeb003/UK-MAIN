@@ -1,162 +1,165 @@
-# Deployment guide
+# Deployment guide — UK/EU hosting
 
-> **Why not Vercel?** Vercel runs stateless serverless functions: no
-> persistent disk (the SQLite DB, retained documents and exports would
-> vanish between requests), a ~250 MB function limit (the OCR stack
-> alone is bigger) and request timeouts shorter than an LLM extraction.
-> Use a platform that runs a persistent container instead — Railway /
-> Render below need no server administration at all, or use any VPS
-> with section B.
+Two containers and one managed database:
 
-## A. Quick deploy without a VPS — Railway (or Render)
+| Part | What | Where it runs |
+|---|---|---|
+| **Backend** (`Dockerfile`) | FastAPI: extraction pipeline, projects, documents, exports | A container host in the UK/EU with a persistent volume at `/data` |
+| **Web** (`web/Dockerfile`) | Next.js app; proxies `/api/*` to the backend server-side | Same host (compose) or Vercel with the London region |
+| **Supabase** | PostgreSQL (projects, documents, config), Auth (sign-in), Storage (uploaded files) | A Supabase project created in **eu-west-2 (London)** or **eu-west-1 (Ireland)** |
 
-The repo now carries a `Dockerfile`, so any container platform deploys
-it straight from GitHub.
+Everything under `deploy/` is ready to use; this guide says which file
+goes where. Data residency (BRD 2.11): keep all three parts in UK/EU
+regions. Note that extraction sends document text to the model provider
+(Anthropic or OpenAI) — see `docs/DATA_PROCESSING.md` for the
+no-training/no-retention posture and the terms to file.
 
-**Railway** (recommended — persistent volume, EU region, ~$5/month):
+> **Why not Vercel for the backend?** Serverless functions have no
+> persistent disk, a size limit smaller than the OCR stack and request
+> timeouts shorter than an extraction. The backend needs a long-running
+> container; the web app is fine on Vercel.
 
-1. railway.app → New Project → **Deploy from GitHub repo** →
-   `msajeeb003/UK-Insurancce` (it auto-detects the Dockerfile).
-2. Settings → Region: **europe-west4 (Amsterdam)** — EU hosting, BRD 2.11.
-3. Right-click the service → **Attach Volume** → mount path `/data`
-   (the SQLite DB, retained documents and exports live there).
-4. Variables tab:
+## 1. Supabase (once)
 
-   ```env
-   ANTHROPIC_API_KEY=sk-ant-...
-   LLM_PROVIDER=anthropic
-   ADMIN_EMAIL=broker@ukcib.co.uk
-   ADMIN_PASSWORD=<strong password>
-   COOKIE_SECURE=true
-   DATA_DIR=/data
+1. **Create the project** in a UK/EU region (Dashboard → New project →
+   Region *London* or *Ireland*). Note the project ref
+   (`https://<ref>.supabase.co`).
+2. **Database URL** — Dashboard → *Connect* → **Session pooler** URI:
+   `postgresql://postgres.<ref>:<password>@aws-<n>-<region>.pooler.supabase.com:5432/postgres`.
+   Append `?sslmode=require`. Percent-encode special characters in the
+   password (`!`→`%21`, `+`→`%2B`, `@`→`%40`, `#`→`%23`). The *direct*
+   host `db.<ref>.supabase.co:5432` is IPv6-only — use it only from a
+   host with IPv6 egress. Both work with this code; the schema is created
+   on first start and new columns are added automatically afterwards.
+3. **Auth** — Project Settings → API: copy the **anon/publishable key**
+   (web) and the **JWT secret** (backend `SUPABASE_JWT_SECRET`; or leave it
+   empty and the backend verifies against the project JWKS). Authentication
+   → Providers → Email: **turn off "Allow new users to sign up"** (BRD 2.10:
+   no self-registration).
+4. **Storage** — create a **private** bucket named `documents` (or set
+   `SUPABASE_STORAGE_BUCKET`). Copy the **service-role key** (backend only;
+   never in the browser bundle).
+5. **Users** — from a machine with the service-role key in `web/.env.local`:
+
+   ```bash
+   cd web && npm run users -- create broker@ukcib.co.uk "Sam Broker"
+   npm run users -- role admin@ukcib.co.uk admin      # /config/* access
    ```
 
-5. Settings → Networking → **Generate Domain** → HTTPS is automatic.
-   Open the URL, sign in with the admin credentials.
-6. **Backups & recovery (required for production): see [BACKUP.md](BACKUP.md)**
-   — the `/data` volume plus encrypted offsite backups, scheduling and the
-   tested restore runbook.
+6. **Backups** — enable daily backups / PITR on the Supabase plan. The
+   app's own backups (`docs/BACKUP.md`) cover `/data` (app SQLite DB,
+   exports, and files when Storage is off).
 
-**Render** works the same way (New Web Service → this repo → Docker,
-region Frankfurt, add a Disk mounted at `/data`, same variables) — but
-note its free tier has **no persistent disk** and sleeps between
-requests, so a paid instance is required for real use.
+## 2. Environment variables
 
-Scanned-PDF OCR note: the default image skips the heavy open-source OCR
-stack. Scanned PDFs need either Azure Document Intelligence keys in the
-variables, or a rebuild with `--build-arg INSTALL_OCR=1` (several-GB
-image).
+Backend: `deploy/.env.production.example` (copy to `.env` on a VPS, or
+paste into the platform's Variables). Web: `deploy/web.env.production.example`.
+The backend **refuses to start** in production without: `APP_ENV=production`,
+`COOKIE_SECURE=true`, a model key + `LLM_NO_TRAINING_ACK=true`, a PostgreSQL
+`DATABASE_URL`, an https `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`.
 
-## B. Hetzner VPS (EU hosting, BRD 2.11)
+| Variable | Purpose |
+|---|---|
+| `DATABASE_URL` | Supabase PostgreSQL (pooler URI, `?sslmode=require`) |
+| `SUPABASE_URL` · `SUPABASE_JWT_SECRET` · `SUPABASE_JWT_AUDIENCE` | Verify the web app's bearer tokens |
+| `SUPABASE_SERVICE_ROLE_KEY` · `SUPABASE_STORAGE_BUCKET` | Uploaded documents in Supabase Storage |
+| `ADMIN_EMAILS` | Extra admins for `/config/*` (besides `app_metadata.role = admin`) |
+| `LLM_PROVIDER` · `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` · `LLM_NO_TRAINING_ACK` | Extraction model |
+| `AZURE_ENDPOINT` · `AZURE_KEY` | OCR for scanned PDFs (UK/EU Azure region), else build with `INSTALL_OCR=1` |
+| `DATA_DIR` | Persistent volume (`/data`) |
+| `FORWARDED_ALLOW_IPS` | Proxies trusted for the client IP (login lockout, rate limit) |
+| `WORKERS` | gunicorn workers (2 for a 2 vCPU host) |
+| `BACKUP_*` · `SENTRY_DSN` · `RETENTION_DAYS` | Operations (`docs/BACKUP.md`, `docs/OBSERVABILITY.md`, `docs/DATA_RETENTION.md`) |
 
-One small VPS runs everything: FastAPI + the SQLite database + stored
-documents. No separate database server is needed at this scale
-(3–4 internal users, BRD 2.10) — backing up the app means copying the
-`data/` directory.
+Web: `BACKEND_URL` (private backend address, runtime) and the public
+`NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` (build time).
 
-### 1. Server
+## 3. Option A — Fly.io, London (`deploy/fly.toml`)
 
-- Hetzner Cloud VPS (e.g. CX22), **Falkenstein or Nuremberg (Germany)**
-  — satisfies the BRD 2.11 UK/EU hosting requirement.
-- Ubuntu 24.04. Enable Hetzner's backups for the volume.
+Managed containers, persistent volume, HTTPS and the `lhr` region.
 
 ```bash
-apt update && apt install -y python3.11-venv git caddy
-git clone https://github.com/msajeeb003/UK-Insurancce.git /opt/quote-tool
+fly auth login
+fly launch --no-deploy --copy-config --config deploy/fly.toml --name quote-tool-backend
+fly volumes create quote_data --region lhr --size 10 --app quote-tool-backend
+cp deploy/.env.production.example deploy/.env.production   # fill in, keep out of git
+fly secrets set --app quote-tool-backend $(grep -v '^#' deploy/.env.production | grep . | xargs)
+fly deploy --config deploy/fly.toml --dockerfile Dockerfile
+fly status --app quote-tool-backend        # health check hits /readyz
+```
+
+The web app: deploy `web/` to Vercel (Project → Settings → Functions →
+Region **London (lhr1)**) with `BACKEND_URL=https://quote-tool-backend.fly.dev`
+and the two `NEXT_PUBLIC_*` values; or run `web/Dockerfile` as a second Fly
+app in `lhr` with `BACKEND_URL` pointing at the backend's internal address
+(`http://quote-tool-backend.internal:8000`).
+
+The CI workflow `.github/workflows/docker-image.yml` publishes both images
+to GHCR on every push to `main` and deploys the backend to Fly when the
+repository secret `FLY_API_TOKEN` is set.
+
+## 4. Option B — Railway, EU (`deploy/railway.toml`)
+
+1. railway.app → New Project → Deploy from GitHub → `msajeeb003/UK-MAIN`.
+2. Service → Settings → **Region: europe-west4 (Amsterdam)**; Config file
+   path `deploy/railway.toml` (or copy it to the repo root).
+3. Settings → Volumes → mount at `/data`.
+4. Variables → paste `deploy/.env.production` (filled in).
+5. Settings → Networking → Generate Domain (HTTPS is automatic).
+   Add a second service from `web/Dockerfile` with `BACKEND_URL` set to the
+   backend's private URL (`http://<service>.railway.internal:8000`).
+
+## 5. Option C — a UK/EU VPS with Docker Compose (`deploy/docker-compose.yml`)
+
+Any Ubuntu 24.04 VPS in a UK/EU data centre (Hetzner Falkenstein/Nuremberg,
+OVH London, IONOS UK, Fasthosts …), 2 vCPU / 4 GB is plenty for the pilot.
+Backend, web and Caddy (automatic Let's Encrypt HTTPS) run as one stack;
+only ports 80/443 are published.
+
+```bash
+# as root on the fresh server
+curl -fsSL https://raw.githubusercontent.com/msajeeb003/UK-MAIN/main/deploy/bootstrap-vps.sh | bash
+# as the deploy user
 cd /opt/quote-tool
-python3 -m venv .venv
-.venv/bin/pip install -r backend/requirements.txt -r backend/requirements-ocr.txt
+cp deploy/.env.production.example .env          # backend — fill in
+cp deploy/web.env.production.example web.env    # web — fill in
+printf 'DOMAIN=quotes.example.co.uk\nAPI_DOMAIN=api.quotes.example.co.uk\n' > deploy/.env
+deploy/deploy.sh                                # build, start, wait for /readyz
 ```
 
-### 2. Configuration — `/opt/quote-tool/.env`
-
-```env
-ANTHROPIC_API_KEY=sk-ant-...
-LLM_PROVIDER=anthropic
-
-# First user (seeded once, when the users table is empty)
-ADMIN_EMAIL=broker@ukcib.co.uk
-ADMIN_PASSWORD=<strong password>
-
-# Behind HTTPS:
-COOKIE_SECURE=true
-
-# Storage (app SQLite DB + retained documents + exports)
-DATA_DIR=/opt/quote-tool/data
-# Project store — PostgreSQL, required in production (docs/DATABASE.md).
-# Paste the Supabase "Connect → URI" string.
-DATABASE_URL=postgresql://postgres.<ref>:<password>@<host>:6543/postgres
-```
-
-Add further users (no self-registration, BRD 2.10):
+Point `DOMAIN` and `API_DOMAIN` at the server before the first start so
+Caddy can issue certificates. `deploy/quote-tool.service` (installed by
+the bootstrap) brings the stack up on reboot. Updates:
 
 ```bash
-cd /opt/quote-tool && .venv/bin/python -m app.manage add-user second.broker@ukcib.co.uk
+cd /opt/quote-tool && deploy/deploy.sh v1.5.0    # or a branch / commit
 ```
 
-### 3. Service — `/etc/systemd/system/quote-tool.service`
+Encryption at rest: use the provider's encrypted volume (or full-disk
+encryption) for the Docker data root; `/data` holds the app SQLite DB,
+exports and — only when Supabase Storage is off — the uploaded documents.
 
-```ini
-[Unit]
-Description=Insurance Quote Comparison Tool
-After=network.target
+## 6. After the first start
 
-[Service]
-WorkingDirectory=/opt/quote-tool
-ExecStart=/opt/quote-tool/.venv/bin/uvicorn app.main:app --app-dir backend --host 127.0.0.1 --port 8000
-Restart=always
-User=www-data
+- `GET https://api.<domain>/readyz` → 200 (disk, database).
+- Sign in on `https://<domain>` with a Supabase user; create a project;
+  upload a quote; check the upload card reaches *Extracted*.
+- `GET /config/insurers` as an admin → 200; as a broker → 403.
+- Watch the logs for `Project store ready (postgresql)` and
+  `Document storage: Supabase bucket`.
 
-[Install]
-WantedBy=multi-user.target
-```
+## 7. Operations
 
-```bash
-chown -R www-data:www-data /opt/quote-tool
-systemctl enable --now quote-tool
-```
-
-### 4. HTTPS — `/etc/caddy/Caddyfile`
-
-Caddy terminates TLS with an automatic Let's Encrypt certificate
-(encryption in transit, BRD 2.11):
-
-```
-quotes.example.co.uk {
-    reverse_proxy 127.0.0.1:8000
-}
-```
-
-```bash
-systemctl reload caddy
-```
-
-The app binds to 127.0.0.1 only — nothing is reachable except through
-Caddy. No client or insurer access; no sharing links (BRD rules).
-
-### 5. Data handling (BRD 2.11)
-
-- **Encryption in transit**: TLS via Caddy (above).
-- **Encryption at rest**: use an encrypted Hetzner volume for
-  `DATA_DIR`, or enable full-disk encryption on the VPS image.
-- **Access**: only the named users can sign in; sessions expire after
-  `SESSION_TTL_HOURS` (default 72).
-- **Model training**: documents are sent to the Claude API for
-  extraction only; API data is not used to train models.
-- **Retention / deletion on request**: deleting a project removes its
-  database rows, retained documents and generated exports:
-
-  ```bash
-  curl -X DELETE https://quotes.example.co.uk/projects/<project-id> -b "qct_session=<session>"
-  ```
-
-  The retention period itself is a client decision (BRD open item) —
-  agree it before go-live.
-- **Backups**: stop-free — copy `/opt/quote-tool/data` (SQLite WAL is
-  snapshot-safe with `sqlite3 data/app.db ".backup backup.db"`).
-
-### 6. Update a release
-
-```bash
-cd /opt/quote-tool && git pull && systemctl restart quote-tool
-```
+- **Logs**: JSON lines with request id and user id (`docs/OBSERVABILITY.md`);
+  `docker compose -f deploy/docker-compose.yml logs -f backend` on a VPS,
+  `fly logs` / Railway's log view otherwise. Set `SENTRY_DSN` for errors.
+- **Backups**: Supabase backups/PITR for projects, documents metadata and
+  config; `docs/BACKUP.md` for `/data`.
+- **Key rotation**: `docs/KEY_ROTATION.md`. Rotating the Supabase JWT
+  secret signs everyone out; rotate the service-role key with the bucket
+  policy in mind.
+- **Scaling**: one container with `WORKERS=2` serves the pilot (3–4 users).
+  Extraction concurrency is capped at three per process (`MAX_CONCURRENT`
+  in `app/api/jobs.py`); raise `WORKERS`/machine size before that.
+- **Retention / erasure**: `docs/DATA_RETENTION.md`; `DELETE /projects/{id}`
+  removes rows, objects and files.

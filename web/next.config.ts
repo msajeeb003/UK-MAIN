@@ -11,6 +11,8 @@ const BACKEND_URL = (process.env.BACKEND_URL ?? "http://127.0.0.1:8000").replace
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
+  // Self-contained server bundle for the container image (web/Dockerfile).
+  output: "standalone",
   async rewrites() {
     return [
       {

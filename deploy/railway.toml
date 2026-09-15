@@ -1,0 +1,19 @@
+# Railway — backend service. Railway reads this file from the repository
+# root, so copy it there (or set "Config file path" to deploy/railway.toml
+# in the service settings).
+#
+# Region is chosen in the dashboard, not here: Settings → Region →
+# **europe-west4 (Amsterdam)** for EU hosting. Attach a volume at /data
+# (Settings → Volumes) and paste deploy/.env.production into Variables.
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+startCommand = "sh entrypoint.sh"
+healthcheckPath = "/readyz"
+healthcheckTimeout = 300
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 5
+numReplicas = 1

@@ -54,6 +54,17 @@ client presentation.
 └── .env(.example)              Secrets at the repo root, shared by any run directory
 ```
 
+## Deploying
+
+`DEPLOY.md` covers UK/EU hosting end to end: the Supabase project (London
+or Ireland region — database, auth, private storage bucket), the
+environment variables (`deploy/.env.production.example`,
+`deploy/web.env.production.example`), and three hosting routes with their
+ready-made files — Fly.io London (`deploy/fly.toml`), Railway EU
+(`deploy/railway.toml`), or any UK/EU VPS with Docker Compose + Caddy
+(`deploy/docker-compose.yml`, `deploy/bootstrap-vps.sh`, `deploy/deploy.sh`).
+CI publishes both container images to GHCR (`.github/workflows/docker-image.yml`).
+
 ## Quick start
 
 ```bash

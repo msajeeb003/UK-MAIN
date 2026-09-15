@@ -10,3 +10,9 @@ docs/
 **/.ruff_cache
 DEPLOY.md
 README.md
+web/node_modules
+web/.next
+web/.env*
+e2e/
+deploy/
+*.md

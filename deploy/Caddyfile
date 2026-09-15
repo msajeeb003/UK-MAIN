@@ -1,0 +1,38 @@
+# Caddy reverse proxy for the compose deployment. TLS certificates come
+# from Let's Encrypt automatically (encryption in transit, BRD 2.11).
+#
+# DOMAIN     → the Next.js app (public entry point; proxies /api to the backend)
+# API_DOMAIN → the FastAPI backend directly (admin tooling, the classic SPA)
+
+{$DOMAIN} {
+	encode zstd gzip
+	reverse_proxy web:3000
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options nosniff
+		Referrer-Policy no-referrer
+		-Server
+	}
+	request_body {
+		max_size 30MB
+	}
+}
+
+{$API_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy backend:8000 {
+		# Extractions can take a couple of minutes on a large scanned PDF.
+		transport http {
+			read_timeout 240s
+			write_timeout 240s
+		}
+	}
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		-Server
+	}
+	request_body {
+		max_size 30MB
+	}
+}

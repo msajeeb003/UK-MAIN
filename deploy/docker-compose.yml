@@ -1,0 +1,86 @@
+# UK/EU VPS deployment: backend + web behind Caddy (automatic HTTPS).
+#
+#   cd /opt/quote-tool
+#   cp deploy/.env.production.example .env          # fill in
+#   cp deploy/web.env.production.example web.env    # fill in
+#   export DOMAIN=quotes.example.co.uk API_DOMAIN=api.quotes.example.co.uk
+#   docker compose -f deploy/docker-compose.yml up -d --build
+#
+# Only Caddy publishes ports. The backend is reached by the web container
+# over the private network (BACKEND_URL=http://backend:8000) and, for
+# admin tooling, on API_DOMAIN. DATA_DIR is a named volume on the host's
+# encrypted disk; projects/config are in Supabase PostgreSQL.
+
+name: quote-tool
+
+services:
+  backend:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      # args: { INSTALL_OCR: "1" }   # open-source OCR for scanned PDFs (large image)
+    image: quote-tool-backend:local
+    restart: unless-stopped
+    env_file: ../.env
+    environment:
+      DATA_DIR: /data
+      PORT: "8000"
+      FORWARDED_ALLOW_IPS: "*"
+    volumes:
+      - quote_data:/data
+    expose:
+      - "8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/readyz', timeout=4).status == 200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 40s
+      retries: 3
+    logging:
+      driver: json-file
+      options: { max-size: "20m", max-file: "5" }
+
+  web:
+    build:
+      context: ../web
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}
+        NEXT_PUBLIC_API_BASE_URL: /api
+    image: quote-tool-web:local
+    restart: unless-stopped
+    env_file: ../web.env
+    environment:
+      BACKEND_URL: http://backend:8000
+    depends_on:
+      backend:
+        condition: service_healthy
+    expose:
+      - "3000"
+    logging:
+      driver: json-file
+      options: { max-size: "20m", max-file: "5" }
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      DOMAIN: ${DOMAIN}
+      API_DOMAIN: ${API_DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - web
+      - backend
+
+volumes:
+  quote_data:
+  caddy_data:
+  caddy_config:
