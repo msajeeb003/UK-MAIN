@@ -20,8 +20,9 @@ extracted value (which the prompt requires to be verbatim):
   4. A value with no page cite that appears on exactly one page gains
      that page link — recovering source links the sanitizer had to drop.
 
-Summary-style fields (`additional_info`) are exempt: they paraphrase by
-design, so verbatim matching would false-flag them.
+Every extracted field is verbatim, so every one is checked (the only
+summary-style field, additional info, is broker-written and no longer
+extracted).
 """
 
 import logging
@@ -32,8 +33,8 @@ from app.models.schemas import QuoteExtraction, sourced_items
 
 logger = logging.getLogger(__name__)
 
-# Fields whose values are summaries, not verbatim quotes.
-SUMMARY_FIELDS = {"additional_info"}
+# Fields whose values are summaries, not verbatim quotes (none today).
+SUMMARY_FIELDS: set[str] = set()
 
 
 def _normalize(text: str) -> str:

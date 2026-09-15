@@ -45,7 +45,6 @@ _FIELD_LABELS: list[tuple[str, str]] = [
     ("discretionary limit", "discretionary_limit"),
     ("max terms of payment", "max_terms_of_payment"),
     ("max extension period", "max_extension_period"),
-    ("additional info", "additional_info"),
 ]
 
 _PAGE_MARKER = re.compile(r"^=== PAGE (\d+) ===$")

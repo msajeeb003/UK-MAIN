@@ -108,13 +108,72 @@ def normalise_insurers(doc: dict) -> dict:
         if not isinstance(active, bool):
             errors.append(f"{where}: active must be true or false.")
             active = True
-        out.append({"id": ins_id, "name": name, "legal_names": legal_list,
-                    "debt_collection": debt, "active": active})
+        # Optional per-insurer wording for the set field (Feedback Round 1,
+        # B1): shown in place of Included / Outsourced for that insurer.
+        label = entry.get("debt_collection_label")
+        label = _clean(label) if isinstance(label, str) else ""
+        if len(label) > 60:
+            errors.append(f"{where}: debt_collection_label must be 60 characters or fewer.")
+        record = {"id": ins_id, "name": name, "legal_names": legal_list,
+                  "debt_collection": debt, "active": active}
+        if label:
+            record["debt_collection_label"] = label
+        out.append(record)
     if out and not any(i["active"] for i in out):
         errors.append("At least one insurer must be active.")
     if errors:
         raise ConfigInvalid(errors)
     return {"insurers": out}
+
+
+def _normalise_rules(raw_rules, insurer_ids: set[str], errors: list[str]) -> dict:
+    """Wording rules (B3): {insurer id | '*': {field: [{match, render}]}}.
+    Every regex must compile and every {placeholder} in the render
+    template must be a named group of its regex."""
+    if raw_rules is None:
+        return {}
+    if not isinstance(raw_rules, dict):
+        errors.append("rules: must be an object of insurer id → {field: [rules]}.")
+        return {}
+    out: dict[str, dict[str, list[dict]]] = {}
+    for ins_id, section in raw_rules.items():
+        if ins_id != "*" and ins_id not in insurer_ids:
+            errors.append(f"rules.{ins_id}: unknown insurer id.")
+            continue
+        if not isinstance(section, dict):
+            errors.append(f"rules.{ins_id}: must be an object of field → [rules].")
+            continue
+        fields: dict[str, list[dict]] = {}
+        for field, items in section.items():
+            where = f"rules.{ins_id}.{field}"
+            if field not in TERM_FIELDS:
+                errors.append(f"{where}: '{field}' is not one of the 16 standard fields.")
+                continue
+            if not isinstance(items, list):
+                errors.append(f"{where}: must be a list of {{match, render}} rules.")
+                continue
+            cleaned = []
+            for i, rule in enumerate(items):
+                match = rule.get("match") if isinstance(rule, dict) else None
+                render = rule.get("render") if isinstance(rule, dict) else None
+                if not isinstance(match, str) or not match.strip() or not isinstance(render, str):
+                    errors.append(f"{where}[{i}]: needs a 'match' regex and a 'render' template.")
+                    continue
+                try:
+                    compiled = re.compile(match, re.IGNORECASE)
+                except re.error as exc:
+                    errors.append(f"{where}[{i}]: invalid regex ({exc}).")
+                    continue
+                missing = [ph for ph in re.findall(r"\{(\w+)\}", render) if ph not in compiled.groupindex]
+                if missing:
+                    errors.append(f"{where}[{i}]: render uses {missing} which are not named groups of the regex.")
+                    continue
+                cleaned.append({"match": match, "render": render.strip()})
+            if cleaned:
+                fields[field] = cleaned
+        if fields:
+            out[ins_id] = fields
+    return out
 
 
 def normalise_terminology(doc: dict, insurer_ids: set[str]) -> dict:
@@ -157,9 +216,11 @@ def normalise_terminology(doc: dict, insurer_ids: set[str]) -> dict:
                 mapped = terms_map(section, f"insurers.{ins_id}")
                 if mapped:
                     insurers[ins_id] = {k: v for k, v in mapped.items() if v}
+    rules = _normalise_rules(doc.get("rules"), insurer_ids, errors)
     if errors:
         raise ConfigInvalid(errors)
-    return {"fields": {f: fields.get(f, []) for f in TERM_FIELDS}, "insurers": insurers}
+    return {"fields": {f: fields.get(f, []) for f in TERM_FIELDS}, "insurers": insurers,
+            "rules": rules}
 
 
 def merged_terminology(doc: dict) -> dict[str, list[str]]:

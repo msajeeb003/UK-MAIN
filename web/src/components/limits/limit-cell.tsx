@@ -3,6 +3,7 @@
 import { useState, type KeyboardEvent } from "react";
 
 import { cellProvenance, isDeclined, type LimitProvenance, type LimitRow } from "@/lib/limits";
+import { formatMoney } from "@/lib/money";
 import { cn } from "@/lib/utils";
 
 interface LimitCellProps {
@@ -36,6 +37,9 @@ const TITLE: Record<LimitProvenance, string> = {
 export function LimitCell({ row, cellKey, value, label, money, mono, placeholder, recommended, onChange, onMove }: LimitCellProps) {
   const [text, setText] = useState(value);
   const [seen, setSeen] = useState(value);
+  // Amount cells show "£250,000" while idle and the stored text while editing (B2).
+  const [focused, setFocused] = useState(false);
+  const shown = money && !focused ? formatMoney(text) : text;
   if (seen !== value) {
     setSeen(value);
     setText(value);
@@ -63,9 +67,13 @@ export function LimitCell({ row, cellKey, value, label, money, mono, placeholder
             id={`limit-${row.id}-${cellKey}`}
             aria-label={label}
             title={TITLE[provenance]}
-            value={text}
+            value={shown}
             onChange={(e) => setText(e.target.value)}
-            onBlur={commit}
+            onFocus={() => setFocused(true)}
+            onBlur={() => {
+              commit();
+              setFocused(false);
+            }}
             onKeyDown={onKeyDown}
             placeholder={placeholder}
             inputMode={money ? "numeric" : undefined}

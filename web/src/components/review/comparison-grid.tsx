@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import type { Insurer, ProjectState } from "@/lib/api/types";
 import { FIELDS, type FieldDef } from "@/lib/fields";
-import { displayColumns } from "@/lib/review";
+import { debtOptions, displayColumns } from "@/lib/review";
 import type { ProjectColumn } from "@/lib/uploads";
 import { cn } from "@/lib/utils";
 
@@ -78,6 +78,7 @@ function moveFocus(colId: string, fieldKey: string, direction: 1 | -1) {
  */
 export function ComparisonGrid({ project, insurers, onCell, onRename, onRemove, onPickRecommended, onOpenSource, onSelectCell }: ComparisonGridProps) {
   const display = displayColumns(project, insurers);
+  const debtWordings = debtOptions(insurers);
   const [removing, setRemoving] = useState<ProjectColumn | null>(null);
 
   return (
@@ -183,6 +184,7 @@ export function ComparisonGrid({ project, insurers, onCell, onRename, onRemove, 
                       onOpenSource={(page) => onOpenSource(d.col, f, page)}
                       onSelect={(page) => onSelectCell(d.col, f, page)}
                       onMove={(dir) => moveFocus(d.col.id, f.key, dir)}
+                      debtOptions={debtWordings}
                     />
                   ),
                 )}

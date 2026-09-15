@@ -1,0 +1,33 @@
+{
+  "_comment": [
+    "Fixed presentation wording (BRD 2.7 / 2.8 / rule 'Regulatory wording is",
+    "fixed'). This file is CONFIGURATION, not code: the server re-reads it",
+    "when it changes on disk, and nothing here is editable out of a generated",
+    "presentation. Paragraph breaks are literal newlines. In 'recommendation'",
+    "the token {name} is replaced by the recommended insurer's name.",
+    "'important_information' is the static block that closes the Feedback of",
+    "Terms page, printed verbatim under the named declined-to-quote line."
+  ],
+  "brand": {
+    "name": "UK Credit Insurance Brokers",
+    "site": "ukcreditinsurance.com",
+    "phone": "0845 3222 525",
+    "email": "hello@ukcreditinsurance.com"
+  },
+  "about": "UK Credit Insurance Brokers are one of the top UK specialist insurance brokers operating in the Trade Credit Insurance market.\n\nAlongside this we are also able to support clients with the following needs:\n• Funding - including invoice finance\n• Surety Bonds\n• Commercial Insurance\n• Debt Collection\n\nGet in touch to find out more:\n0845 3222 525",
+  "feedback_intro": "We are pleased to present our feedback of terms negotiated with the credit insurance market. These terms are based upon the information you have detailed when you completed the UK Credit Insurance Brokers Enquiry Form.",
+  "fair_presentation": "The Insurance Act 2015 identifies the 'Duty of Fair Presentation'. It is your responsibility to provide complete and accurate information when taking out an insurance policy, throughout the life of the policy and when you renew the policy. You must disclose any material circumstance you know or ought to know following a reasonable search of your business. Material facts are information that might influence an Insurers decision in deciding whether or not to accept the risk and in setting terms and premiums. The remedies available to an Insurer following any breach in this duty include payment of a claim being reduced, additional terms being imposed and avoidance of the policy by the Insurer. If you are aware of any material changes or are in doubt whether certain information is relevant then please disclose this to us in order that we can update the Insurers.",
+  "terms_notes": "All terms exclude cover for certain types of fraud, disputes and accounts that are seriously overdue at inception of the policy. They also exclude VAT.",
+  "important_information": [
+    "You will note from the terms comparison, that some declined to quote – further details are available if requested.",
+    "Although we have access to the whole market, some were not approached due to the nature of their business, turnover or premium requirements, or other prevailing factors.",
+    "Full details of cover and any exclusions can be found in the individual insurers policy wordings.",
+    "Please note all terms are non-binding until receipt, and acceptance, by the Insurer of their completed and signed proposal form.",
+    "Please see accompanying Demand and Needs Statement for more detail of our recommendation."
+  ],
+  "demands": "As part of our discussions, we have identified that a credit insurance policy will help protect the business against potential bad debts, and will aid in any future growth plans.\n\nIn accordance with the Financial Conduct Authority (FCA) regulations, we are required to ensure that the policy we are recommending is suitable for your needs.",
+  "recommendation": "The policy we propose to arrange is provided by {name}, which is one of the UK's leading Credit Insurance companies. An explanation of the proposed policy is included in the policy documents. We are not contractually obliged to purchase insurance products from {name}. Our past experience, and analysis of the market, has shown that the cover provided by {name} is comprehensive and its premiums competitive.",
+  "our_status": "We are included on a register maintained by the FCA which allows us to carry out insurance distribution activity, such as advising, selling and administration of insurance contracts. This part of our business, including arrangements for complaints or redress if something goes wrong, is regulated by the relevant representative body. The FCA's register can be accessed via their website at www.fca.org.uk/register",
+  "contact": "Our phone line is always open and we love to talk!\nDon't forget, we work for you so contact us at any time to discuss your policy, your clients or your financial needs.",
+  "contact_lines": ["0845 3222 525", "www.ukcreditinsurance.com", "hello@ukcreditinsurance.com"]
+}

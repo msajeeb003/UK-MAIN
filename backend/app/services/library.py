@@ -148,18 +148,37 @@ def match_insurer(extracted_name: str | None) -> dict | None:
     return next((i for i in get_insurers() if i["id"] == hit_id), None)
 
 
+DEBT_BASE_OPTIONS = ("Included", "Outsourced")
+
+
 def debt_collection_rule(extracted_name: str | None) -> tuple[str, str | None]:
     """
-    BRD 2.4: Allianz, Atradius and Coface default to Included; every other
-    insurer (and an unrecognised one) defaults to Outsourced. Returns
-    (value, matched standing-list name or None). Editable per column in the
-    UI — this only sets the default.
+    BRD 2.4: the insurers flagged `included` in config (Allianz, Atradius,
+    Coface, Cartan) default to Included; every other insurer (and an
+    unrecognised one) defaults to Outsourced. An insurer may carry its own
+    wording for the value (`debt_collection_label`, e.g. Cartan's
+    "Inclusive collections"). Returns (value, matched standing-list name
+    or None). Editable per column in the UI — this only sets the default.
     """
     matched = match_insurer(extracted_name)
     if matched is None:
         return "Outsourced", None
+    label = matched.get("debt_collection_label")
+    if label:
+        return label, matched["name"]
     value = "Included" if matched["debt_collection"] == "included" else "Outsourced"
     return value, matched["name"]
+
+
+def debt_collection_options() -> list[str]:
+    """Every wording the Debt collection set field may hold: the two rule
+    values plus each configured per-insurer label (B1)."""
+    labels = [i["debt_collection_label"] for i in get_insurers() if i.get("debt_collection_label")]
+    out = list(DEBT_BASE_OPTIONS)
+    for label in labels:
+        if label not in out:
+            out.append(label)
+    return out
 
 
 # ── Terminology ────────────────────────────────────────────────────────────
@@ -174,6 +193,33 @@ def terminology_document() -> dict:
         return stored
     ids = {i["id"] for i in get_insurers()}
     return normalise_terminology(_load_json("terminology.json"), ids)
+
+
+def wording_rules() -> dict:
+    """Normalisation rules from the mapping library (B3):
+    {insurer id | '*': {field: [{match, render}]}}."""
+    return terminology_document().get("rules") or {}
+
+
+# ── Presentation wording ───────────────────────────────────────────────────
+
+_WORDING_KEYS = ("brand", "about", "feedback_intro", "fair_presentation", "terms_notes",
+                 "important_information", "demands", "recommendation", "our_status",
+                 "contact", "contact_lines")
+
+
+def presentation_wording() -> dict:
+    """The fixed presentation text (BRD 2.7 / 2.8) from
+    config/presentation.json — configuration, re-read on change."""
+    doc = _load_json("presentation.json")
+    missing = [k for k in _WORDING_KEYS if k not in doc]
+    if missing:
+        raise ConfigurationError(
+            f"config/presentation.json is missing {missing} — restore them from the repository."
+        )
+    if "{name}" not in doc["recommendation"]:
+        raise ConfigurationError("config/presentation.json: 'recommendation' must contain {name}.")
+    return doc
 
 
 def get_terminology() -> dict[str, list[str]]:

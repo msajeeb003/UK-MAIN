@@ -29,7 +29,7 @@ def test_get_recommendation(project):
     res = project.get(f"/projects/{PID}/recommendation")
     assert res.status_code == 200, res.text
     body = res.json()
-    assert body["insurer"] == "Allianz Trade" and body["insurer_id"] == "allianz" and body["column_id"] == "c-al"
+    assert body["insurer"] == "Allianz" and body["insurer_id"] == "allianz" and body["column_id"] == "c-al"
     assert body["reasons"] == "- Highest indemnity" and body["key_differences"] == ""
     assert [c["column_id"] for c in body["candidates"]] == ["c-al", "c-qbe", "c-free"]   # quotes only
     assert next(c for c in body["candidates"] if c["column_id"] == "c-qbe")["insurer_id"] == "qbe"

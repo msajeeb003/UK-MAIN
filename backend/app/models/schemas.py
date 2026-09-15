@@ -95,8 +95,8 @@ class BuyerCreditLimit(BaseModel):
 class QuoteExtraction(BaseModel):
     """
     The extracted portion of the BRD 2.3 comparison list. Deliberately
-    ABSENT (set, never extracted — BRD 2.4): type of policy, debt
-    collection support.
+    ABSENT: type of policy and debt collection support (set, never
+    extracted — BRD 2.4) and additional info (broker-written — B5).
     """
 
     document_type: DocumentType = Field(
@@ -164,15 +164,9 @@ class QuoteExtraction(BaseModel):
             "waiting period is stated, return null here."
         )
     )
-    additional_info: SourcedValue = Field(
-        description=(
-            "Free-format text: material notes a broker should see that fit "
-            "no field above — e.g. no-claims bonus terms, and any material "
-            "countries-covered, exclusions or special-conditions wording "
-            "(those are not separate comparison rows). Concise plain text; "
-            "null if nothing noteworthy."
-        )
-    )
+    # Deliberately ABSENT (Feedback Round 1, B5): `additional_info` is
+    # free-format text the broker writes on the review screen; it is never
+    # extracted, mapped or normalised.
     buyer_credit_limits: list[BuyerCreditLimit] = Field(
         description=(
             "All buyer credit-limit rows if the document contains a credit "

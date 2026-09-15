@@ -10,7 +10,7 @@ import { insurersApi, type Insurer } from "@/lib/api";
  * backend/config/insurers.json — edit it there, not here.
  */
 export const FALLBACK_INSURERS: Insurer[] = [
-  { id: "allianz", name: "Allianz Trade", debt_collection: "included" },
+  { id: "allianz", name: "Allianz", debt_collection: "included" },
   { id: "atradius", name: "Atradius", debt_collection: "included" },
   { id: "coface", name: "Coface", debt_collection: "included" },
   { id: "tmhcc", name: "Tokio Marine HCC", debt_collection: "outsourced" },
@@ -19,9 +19,8 @@ export const FALLBACK_INSURERS: Insurer[] = [
   { id: "chubb", name: "Chubb", debt_collection: "outsourced" },
   { id: "markel", name: "Markel", debt_collection: "outsourced" },
   { id: "nexus", name: "Nexus", debt_collection: "outsourced" },
-  { id: "aviva", name: "Aviva", debt_collection: "outsourced" },
   { id: "zurich", name: "Zurich", debt_collection: "outsourced" },
-  { id: "cartan", name: "Cartan", debt_collection: "outsourced" },
+  { id: "cartan", name: "Cartan", debt_collection: "included", debt_collection_label: "Inclusive collections" },
 ];
 
 export interface InsurersState {

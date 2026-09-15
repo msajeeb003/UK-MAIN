@@ -6,6 +6,7 @@
  */
 import type { ProjectState } from "@/lib/api/types";
 import { FIELDS, type FieldDef } from "@/lib/fields";
+import { renderValue } from "@/lib/money";
 import { cellValue, projectColumns } from "@/lib/review";
 import type { ProjectColumn } from "@/lib/uploads";
 
@@ -43,9 +44,11 @@ export function recommendedColumn(p: ProjectState): ProjectColumn | null {
   return id ? (projectColumns(p).find((c) => c.id === id) ?? null) : null;
 }
 
-/** Split the wording into text and name segments for highlighting. */
-export function mergeSegments(name: string | null): { text: string; name: boolean }[] {
-  const parts = RECOMMENDATION_WORDING.split("{name}");
+/** Split the wording into text and name segments for highlighting. The
+ *  wording comes from the backend's configuration when loaded; the
+ *  constant above is the fallback until it arrives. */
+export function mergeSegments(name: string | null, wording: string = RECOMMENDATION_WORDING): { text: string; name: boolean }[] {
+  const parts = wording.split("{name}");
   const out: { text: string; name: boolean }[] = [];
   parts.forEach((part, i) => {
     if (part) out.push({ text: part, name: false });
@@ -79,7 +82,7 @@ export function miniFields(): FieldDef[] {
 }
 
 export function miniValue(p: ProjectState, col: ProjectColumn, field: FieldDef): string {
-  return cellValue(p, col, field) || "—";
+  return renderValue(field.key, cellValue(p, col, field)) || "—";
 }
 
 // ── Mutations ───────────────────────────────────────────────────────────

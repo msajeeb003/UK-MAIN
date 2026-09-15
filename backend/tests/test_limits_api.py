@@ -162,7 +162,7 @@ def test_excel_download_is_editable_with_formula_totals(project):
     ws = wb["Credit Limits"]
     assert ws["A1"].value == "Credit limits — Limits Test Ltd"
     assert [c.value for c in ws[2]] == ["Top Customers", "Company Reg", "Limit Required (GBP)", "Allianz Trade", "QBE"]
-    assert [c.value for c in ws[3]] == ["Example Ltd", "01234567", "£250,000", "£200,000", "0"]
+    assert [c.value for c in ws[3]] == ["Example Ltd", "01234567", "£250,000", "£200,000", "£0"]   # an explicit declined zero, in £ (B2)
     assert [c.value for c in ws[4]][:4] == ["Other plc", None, "£100,000", "£100,000"]
     assert ws["A5"].value == "Total" and str(ws["C5"].value).startswith("=SUMPRODUCT")
     assert "C3:C5" not in str(ws["C5"].value) and "C3:C4" in str(ws["C5"].value)

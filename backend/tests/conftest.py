@@ -163,7 +163,6 @@ def sample_extraction() -> QuoteExtraction:
         discretionary_limit=sv("GBP 20,000", 2, confidence="uncertain"),
         max_terms_of_payment=sv(None, None),
         max_extension_period=sv(None, None),
-        additional_info=sv(None, None),
         buyer_credit_limits=[BuyerCreditLimit(
             buyer_name="Example Ltd", company_number="01234567",
             limit_required="GBP 250,000", limit_offered="GBP 200,000", page=42,

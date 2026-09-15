@@ -221,8 +221,10 @@ function ExportBody({ project }: { project: ProjectState }) {
           role="status"
         >
           {gateOk
-            ? "✓ All key values confirmed. Export is enabled."
-            : left > 0
+            ? summary.included.length
+              ? "✓ All key values confirmed. Export is enabled."
+              : "✓ Limits-only presentation — no quote terms to confirm. Export is enabled."
+            : left > 0 && summary.included.length
               ? `⚠ Export is blocked until Est. premium, indemnity, excess and max liability are confirmed on the review screen (${left} remaining).`
               : "⚠ Export is blocked."}
           {summary.blockers.filter((b) => !b.startsWith("Confirm the four")).map((b) => (

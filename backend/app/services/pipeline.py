@@ -33,8 +33,9 @@ from app.models.schemas import (
     StepTiming,
     sourced_items,
 )
-from app.services.library import debt_collection_rule, get_terminology
+from app.services.library import debt_collection_rule, get_terminology, match_insurer
 from app.services.verification import verify_extraction
+from app.services.wording import apply_wording_rules
 
 logger = logging.getLogger(__name__)
 
@@ -214,6 +215,14 @@ async def run_extraction_pipeline(
     with rec.step("verification") as info:
         unverified = verify_extraction(extraction, pages)
         info["unverified"] = len(unverified)
+
+    with rec.step("wording_rules") as info:
+        # Mapping-library normalisation of an insurer's sentence to the
+        # presentation's short form (B3) — after verification, so the value
+        # was checked against the page as written; page links untouched.
+        hit = match_insurer(extraction.insurer.value)
+        changed = apply_wording_rules(extraction, hit["id"] if hit else None)
+        info["applied"] = len(changed)
 
     return ExtractionResponse(
         meta=ProcessingMeta(

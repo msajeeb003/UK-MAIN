@@ -24,9 +24,23 @@ export interface LimitsProjectState extends UploadProjectState {
   limitsHidden?: string[];
 }
 
+/** Largest limit required first (Feedback Round 1, D2); rows with no
+ *  limit required keep their order at the bottom. */
+export function sortLimitRows(rows: LimitRow[]): LimitRow[] {
+  return rows
+    .map((row, index) => ({ row, index, amount: parseAmount(row.req ?? "") }))
+    .sort((a, b) => {
+      if (a.amount === null && b.amount === null) return a.index - b.index;
+      if (a.amount === null) return 1;
+      if (b.amount === null) return -1;
+      return b.amount - a.amount || a.index - b.index;
+    })
+    .map((x) => x.row);
+}
+
 export function creditRows(p: ProjectState): LimitRow[] {
   const s = p as LimitsProjectState;
-  return Array.isArray(s.credit) ? s.credit : [];
+  return sortLimitRows(Array.isArray(s.credit) ? s.credit : []);
 }
 
 /** One column per insurer with a quote (the expiring policy is not a quote). */
@@ -53,7 +67,7 @@ export function parseAmount(value: string): number | null {
   const v = value.trim();
   if (v === "") return null;
   if (ZERO_WORDS.test(v)) return 0;
-  const m = v.match(/^[£$€]?\s*([\d,]+(?:\.\d+)?)\s*$/);
+  const m = v.match(/^(?:[£$€]|gbp)?\s*([\d,]+(?:\.\d+)?)\s*$/i);
   if (!m) return null;
   const n = Number(m[1].replace(/,/g, ""));
   return Number.isFinite(n) ? Math.round(n) : null;

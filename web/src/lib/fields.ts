@@ -34,7 +34,7 @@ export const FIELDS: readonly FieldDef[] = [
   { key: "max_terms_of_payment", label: "Max Terms of Payment" },
   { key: "max_extension_period", label: "Max Extension Period" },
   { key: "waiting_period", label: "Waiting Period", note: "Broker-entered", manual: true },
-  { key: "additional_info", label: "Notes", note: "Free-format" },
+  { key: "additional_info", label: "Notes", note: "Free-format · broker-entered", manual: true },
 ];
 
 /** Extracted (non-set, non-manual) field keys, in grid order. */

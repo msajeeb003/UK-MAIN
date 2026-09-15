@@ -4,7 +4,7 @@ Every LLM value must be found in the document text or it is flagged;
 wrong page citations are corrected; dropped ones are recovered."""
 
 from app.extraction.base import PageText
-from app.services.verification import verify_extraction
+from app.services.verification import SUMMARY_FIELDS, verify_extraction
 from tests.conftest import sv
 
 
@@ -85,7 +85,7 @@ def test_short_standalone_value_verifies():
         "estimated_annual_premium_exc_ipt", "minimum_annual_premium",
         "credit_limit_charges", "indemnity", "excess", "excess_type",
         "max_annual_liability", "max_terms_of_payment",
-        "max_extension_period", "additional_info",
+        "max_extension_period",
     ]}
     ex = QuoteExtraction(document_type="insurer_quote",
                          discretionary_limit=sv("0", 1),
@@ -99,11 +99,9 @@ def test_short_standalone_value_verifies():
     assert "discretionary_limit" in verify_extraction(ex2, pages)
 
 
-def test_summary_fields_are_exempt(sample_extraction):
-    ex = make_extraction(
-        sample_extraction,
-        additional_info=sv("No-claims bonus of 10% applies", 1),
-    )
-    unverified = verify_extraction(ex, PAGES)
-    assert "additional_info" not in unverified
-    assert ex.additional_info.confidence == "high"
+def test_every_extracted_field_is_verified(sample_extraction):
+    """Additional info is broker-written (Feedback Round 1, B5), so no
+    extracted field is exempt from the verbatim check any more."""
+    assert SUMMARY_FIELDS == set()
+    ex = make_extraction(sample_extraction, excess_type=sv("Wording not on any page", 1))
+    assert "excess_type" in verify_extraction(ex, PAGES)

@@ -33,7 +33,7 @@ def _wait(client, pid: str, doc_id: str, timeout: float = 25.0) -> dict:
 _FIELDS = ("insurer", "annual_turnover", "premium_rate", "estimated_annual_premium_exc_ipt",
            "minimum_annual_premium", "credit_limit_charges", "indemnity", "excess", "excess_type",
            "max_annual_liability", "discretionary_limit", "max_terms_of_payment",
-           "max_extension_period", "additional_info")
+           "max_extension_period")
 
 
 def _sv(value: str | None, page: int | None = 1) -> SourcedValue:
@@ -109,7 +109,7 @@ def test_three_uploads_one_corrupt(client, digital_pdf, monkeypatch):
     assert good["status"] == "ready" and good["page_count"] == 1 and good["error"] is None
     steps = [t["step"] for t in good["timings"]]
     assert steps == ["text_extraction", "extraction", "identification", "terminology_mapping",
-                     "verification", "persist"]
+                     "verification", "wording_rules", "persist"]
     assert all(t["ok"] and t["ms"] >= 0 for t in good["timings"])
     assert "insurer=Allianz Trade" in good["timings"][1]["detail"]
     assert _wait(client, PID, recs[1]["id"])["status"] == "ready"
@@ -121,9 +121,9 @@ def test_three_uploads_one_corrupt(client, digital_pdf, monkeypatch):
     # Persisted: two columns, one per insurer; the cards reflect each outcome.
     state = project["state"]
     names = sorted(c["name"] for c in state["columns"])          # completion order is not fixed
-    assert names == ["Allianz Trade", "QBE UK LIMITED"]
+    assert names == ["Allianz", "QBE"]
     cols = {c["docId"]: c for c in state["columns"]}
-    assert cols[recs[0]["id"]]["matched"] == "Allianz Trade" and cols[recs[0]["id"]]["debt"] == "Included"
+    assert cols[recs[0]["id"]]["matched"] == "Allianz" and cols[recs[0]["id"]]["debt"] == "Included"
     excess = cols[recs[0]["id"]]["data"]["excess"]
     assert excess["value"] == "GBP 5,000" and excess["orig"] == "GBP 5,000"
     # The fake PDF does not contain the figure, so verification flagged it.
@@ -218,8 +218,8 @@ def test_reupload_reruns_only_that_document_and_keeps_edits(client, digital_pdf,
     b_done = _wait(client, PID, b["id"])
 
     grid = client.get(f"/projects/{PID}/grid").json()
-    col_a = next(c for c in grid["columns"] if c["name"] == "Allianz Trade")
-    col_b = next(c for c in grid["columns"] if c["name"] == "QBE UK LIMITED")
+    col_a = next(c for c in grid["columns"] if c["name"] == "Allianz")
+    col_b = next(c for c in grid["columns"] if c["name"] == "QBE")
     # The broker edits a cell, overrides a set field and types a waiting period.
     client.patch(f"/projects/{PID}/grid/columns/{col_a['id']}/cells/excess", json={"value": "GBP 7,500"})
     client.put(f"/projects/{PID}/grid/columns/{col_a['id']}/set-fields/type", json={"value": "Top-Up"})

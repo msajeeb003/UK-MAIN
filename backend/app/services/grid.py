@@ -28,10 +28,9 @@ from __future__ import annotations
 import time
 from typing import Any
 
-from app.services.library import debt_collection_rule
+from app.services.library import debt_collection_options, debt_collection_rule
 
 POLICY_TYPES = ("Whole Turnover", "Top-Up", "Single Risk", "Gap-Fill")
-DEBT_OPTIONS = ("Included", "Outsourced")
 
 # confirm key (as stored in state.confirmed, shared with the web) ↔ field key
 CONFIRM_KEYS: dict[str, str] = {
@@ -62,7 +61,8 @@ FIELDS: list[dict[str, Any]] = [
     {"key": "discretionary_limit", "label": "Discretionary Limit", "kind": "extracted"},
     {"key": "max_terms_of_payment", "label": "Max Terms of Payment", "kind": "extracted"},
     {"key": "max_extension_period", "label": "Max Extension Period", "kind": "extracted"},
-    {"key": "additional_info", "label": "Notes", "kind": "extracted", "note": "Free-format"},
+    # Broker-written free text (Feedback Round 1, B5): never extracted.
+    {"key": "additional_info", "label": "Notes", "kind": "manual", "note": "Free-format · broker-entered"},
     # Not in the BRD's 16 — a broker-entered row the review screen carries
     # (flagged to the client); kept here so the API describes what is stored.
     {"key": "waiting_period", "label": "Waiting Period", "kind": "manual", "note": "Broker-entered",
@@ -272,8 +272,8 @@ def _validate_set_value(key: str, value: str) -> str:
     value = " ".join(value.split())
     if key == "type" and value and value not in POLICY_TYPES:
         raise InvalidValue(f"Type of policy must be one of: {', '.join(POLICY_TYPES)}.")
-    if key == "debt" and value and value not in DEBT_OPTIONS:
-        raise InvalidValue(f"Debt collection must be one of: {', '.join(DEBT_OPTIONS)}.")
+    if key == "debt" and value and value not in debt_collection_options():
+        raise InvalidValue(f"Debt collection must be one of: {', '.join(debt_collection_options())}.")
     return value
 
 

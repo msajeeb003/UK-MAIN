@@ -23,17 +23,19 @@ client-side apply, plus the idempotency rule of ART-330):
 
 from __future__ import annotations
 
+import re
 import secrets
 import time
 from typing import Any
 
 from app.models.schemas import ExtractionResponse
+from app.services.library import get_insurers
 
 EXTRACTED_FIELD_KEYS = (
     "annual_turnover", "premium_rate", "estimated_annual_premium_exc_ipt",
     "minimum_annual_premium", "credit_limit_charges", "indemnity", "excess", "excess_type",
     "max_annual_liability", "discretionary_limit", "max_terms_of_payment",
-    "max_extension_period", "additional_info",
+    "max_extension_period",
 )
 DOC_TYPE_LABELS = {
     "insurer_quote": "quote", "credit_limit_schedule": "credit-limit schedule",
@@ -165,6 +167,23 @@ def _attach_pending(credit: list[dict], col: dict) -> list[dict]:
     return out
 
 
+def insurer_from_filename(filename: str) -> dict | None:
+    """The standing-list insurer whose name (or a legal name) appears as a
+    whole word in the file name — "Coface limits Aug26.xlsx" names Coface.
+    Deterministic string matching only; a file that names no insurer
+    returns None (never guessed)."""
+    stem = (filename or "").rsplit(".", 1)[0]
+    if not stem.strip():
+        return None
+    best: tuple[int, dict] | None = None
+    for ins in get_insurers():
+        for name in (ins["name"], *ins.get("legal_names", [])):
+            if re.search(r"(?<![A-Za-z0-9])" + re.escape(name) + r"(?![A-Za-z0-9])", stem, re.IGNORECASE):
+                if best is None or len(name) > best[0]:
+                    best = (len(name), ins)
+    return best[1] if best else None
+
+
 def _find_insurer_column(columns: list[dict], matched: str | None, insurer: str | None) -> dict | None:
     if matched:
         hit = next((c for c in columns if c.get("matched") == matched), None)
@@ -221,18 +240,31 @@ def apply_result(state: dict, *, document_id: str, filename: str, slot: str,
 
     # Credit-limit schedules attach to the insurer's column, never become one.
     if slot == "limits" or d.document_type == "credit_limit_schedule":
+        if not matched and not insurer:
+            # A bare buyer list names no insurer in its text; the file the
+            # broker uploaded usually does (C2).
+            named = insurer_from_filename(filename)
+            if named:
+                matched = named["name"]
+                meta = meta.replace("Unrecognised insurer", f"{matched} (from the file name)", 1)
         col = _find_insurer_column(columns, matched, insurer)
         credit = _merge_buyers(credit, col["id"] if col else None, d.buyer_credit_limits,
                                _lower(matched or insurer or "") or None)
         if col:
             meta += f" · limits added to {col['name']}"
+        elif d.buyer_credit_limits:
+            meta += " · insurer not identified: offers wait for that insurer's quote"
         nxt = {**state, "credit": credit}
         nxt = set_file_status(nxt, document_id, status="extracted", meta=meta, clear_job=True)
         return nxt, None
 
     rule_debt = result.set_fields.debt_collection_support.value if result.set_fields else "Outsourced"
-    col_name = (f"Expiring — {insurer or 'policy'}" if slot == "expiring"
-                else insurer or (filename.rsplit(".", 1)[0] if filename else "Quote"))
+    # The column heading is the standing list's display name when the insurer
+    # was identified (A2 / A3: "Allianz", "Coface" — never the document's legal
+    # wording); the document's own name is kept on the upload card.
+    display = matched or insurer
+    col_name = (f"Expiring — {display or 'policy'}" if slot == "expiring"
+                else display or (filename.rsplit(".", 1)[0] if filename else "Quote"))
 
     # Same document re-run → its own column; else the insurer's column.
     existing = next((c for c in columns if c.get("docId") == document_id and not c.get("manual")), None)

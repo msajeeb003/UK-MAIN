@@ -34,7 +34,16 @@ export interface Insurer {
   name: string;
   /** BRD 2.4 debt-collection rule. */
   debt_collection: "included" | "outsourced";
+  /** Wording shown for this insurer's column in place of Included / Outsourced (config). */
+  debt_collection_label?: string;
   aliases?: string[];
+}
+
+/** The fixed presentation wording (backend/config/presentation.json). */
+export interface PresentationWording {
+  recommendation: string;
+  important_information: string[];
+  [key: string]: unknown;
 }
 
 export interface InsurersResponse {

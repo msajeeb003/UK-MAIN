@@ -31,7 +31,8 @@ BUYER_FIELDS = ("buyer", "company_number", "required")
 _STATE_KEY = {"buyer": "buyer", "company_number": "reg", "required": "req"}
 
 _ZERO_WORDS = re.compile(r"^(?:nil|none|declined|zero|0|£\s*0|0\.00|£\s*0\.00)$", re.I)
-_AMOUNT = re.compile(r"^[£$€]?\s*([\d,]+(?:\.\d+)?)\s*$")
+# "GBP 250,000" is an amount too (B2: the figure is what counts, the prefix is rendered).
+_AMOUNT = re.compile(r"^(?:[£$€]|gbp)?\s*([\d,]+(?:\.\d+)?)\s*$", re.I)
 
 
 class RowNotFound(LookupError):
@@ -93,6 +94,14 @@ def total(values: list[str]) -> int | None:
 def rows(state: dict) -> list[dict]:
     credit = state.get("credit")
     return [r for r in credit if isinstance(r, dict) and r.get("id")] if isinstance(credit, list) else []
+
+
+def sorted_rows(state: dict) -> list[dict]:
+    """Rows largest limit required first (Feedback Round 1, D2) — the order
+    S6, the credit-limit slide and the standalone export all show."""
+    from app.services.money import sort_limit_rows
+
+    return sort_limit_rows(rows(state), lambda r: r.get("req") or "")
 
 
 def find_row(state: dict, row_id: str) -> dict:
@@ -166,7 +175,7 @@ def row_view(r: dict, cols: list[dict]) -> dict:
 
 def grid_view(project_id: str, state: dict) -> dict:
     cols = columns(state)
-    rs = rows(state)
+    rs = sorted_rows(state)
     hidden = set(hidden_ids(state))
     return {
         "project_id": project_id,
@@ -288,9 +297,11 @@ def _table(view: dict) -> tuple[list[str], list[list[str]], list[str]]:
     """Headers, one text row per buyer, and the total row."""
     cols = view["columns"]
     headers = ["Top Customers", "Company Reg", "Limit Required (GBP)"] + [c["name"] for c in cols]
+    from app.services.money import format_money
+
     body = [
-        [r["buyer"]["value"], r["company_number"]["value"], r["required"]["value"]]
-        + [r["offers"][c["id"]]["value"] for c in cols]
+        [r["buyer"]["value"], r["company_number"]["value"], format_money(r["required"]["value"])]
+        + [format_money(r["offers"][c["id"]]["value"]) for c in cols]
         for r in view["rows"] if row_has_content({
             "buyer": r["buyer"]["value"], "reg": r["company_number"]["value"],
             "req": r["required"]["value"], "offers": {k: v["value"] for k, v in r["offers"].items()},
@@ -361,7 +372,7 @@ def build_pdf(view: dict, client_name: str) -> bytes:
         if title:
             page.insert_text((_MARGIN, y + 14), f"Credit limits — {client_name or 'Client'}",
                              fontsize=14, fontname="helv")
-            page.insert_text((_MARGIN, y + 30), "Editable: click a value to amend it. Amounts in GBP.",
+            page.insert_text((_MARGIN, y + 30), "Editable: click a value to amend it.",
                              fontsize=8.5, fontname="helv", color=(0.4, 0.4, 0.45))
             y += 44
         x = _MARGIN
@@ -385,11 +396,19 @@ def build_pdf(view: dict, client_name: str) -> bytes:
                 widget = pymupdf.Widget()
                 widget.field_name = f"cell_{field_no}"
                 widget.field_type = pymupdf.PDF_WIDGET_TYPE_TEXT
-                widget.rect = rect + (2, 2, -2, -2)
-                # Form-field text is stored in PDFDocEncoding; the pound sign
-                # does not round-trip reliably, so amounts are written as
-                # plain figures (the header says GBP).
-                widget.field_value = value.lstrip("£").strip()
+                # A pound sign does not survive a PDF form field (the field
+                # encoding mangles it), so a £-prefixed amount is shown as a
+                # printed "£" immediately followed by the editable figure —
+                # the reader sees "£250,000" (B2); the figure stays editable.
+                money = value.startswith("£")
+                if money:
+                    page.insert_text((x + 4, y + _ROW_H - 6), "£", fontsize=8.5, fontname="helv",
+                                     color=(0.1, 0.1, 0.15))
+                    widget.rect = rect + (11, 2, -2, -2)
+                    widget.field_value = value[1:].strip()
+                else:
+                    widget.rect = rect + (2, 2, -2, -2)
+                    widget.field_value = value
                 widget.text_font = "Helv"
                 widget.text_fontsize = 8.5
                 widget.text_color = (0.1, 0.1, 0.15)

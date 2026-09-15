@@ -13,84 +13,174 @@
     "'fields' holds wording ANY insurer may use. 'insurers' holds one",
     "insurer's own wording per row, keyed by its id in insurers.json —",
     "per-insurer format tuning lives here (and in the admin screen), never",
-    "in code. Score changes with:  python -m app.eval <corpus dir>"
+    "in code. Score changes with:  python -m app.eval <corpus dir>",
+    "'rules' normalise an insurer's sentence to the presentation's short form",
+    "(Feedback Round 1, B3): per insurer id (or '*'), per standard field, a",
+    "case-insensitive regex with named groups and a render template. The",
+    "figure is always the document's own group value, never inferred.",
+    "Nexus (open credit): '... not exceeding 60 days from end of month ...'",
+    "-> '60 days end of month'; invoice-dated -> '60 days date of invoice'.",
+    "Record additions here in the client's line-by-line mapping document too."
   ],
   "fields": {
     "annual_turnover": [
-      "Insurable Turnover", "Estimated Insurable Turnover",
+      "Insurable Turnover",
+      "Estimated Insurable Turnover",
       "Estimated Insurable Turnover (Split Domestic and Export)",
       "Estimated Insured Turnover for Policy Period",
-      "Projected Insurable Turnover", "Insurable Sales (excluding VAT)",
-      "Estimated Annual Sales", "Declared Turnover", "Total Estimated Turnover"
+      "Projected Insurable Turnover",
+      "Insurable Sales (excluding VAT)",
+      "Estimated Annual Sales",
+      "Declared Turnover",
+      "Total Estimated Turnover"
     ],
     "premium_rate": [
-      "Rate", "Premium Rate", "Rate per £100", "Turnover Rate",
-      "Premium Rate Zone 1", "Premium Rate Zone 2"
+      "Rate",
+      "Premium Rate",
+      "Rate per £100",
+      "Turnover Rate",
+      "Premium Rate Zone 1",
+      "Premium Rate Zone 2"
     ],
     "estimated_annual_premium_exc_ipt": [
-      "Annual Premium", "Estimated Premium", "Total Estimated Premium",
-      "Premium Payable", "Deposit Premium", "Fixed premium",
-      "Provisional premium", "Annual Premium Payable - exclusive of IPT",
-      "Estimated Premium (excluding IPT)", "Flat Premium"
+      "Annual Premium",
+      "Estimated Premium",
+      "Total Estimated Premium",
+      "Premium Payable",
+      "Deposit Premium",
+      "Fixed premium",
+      "Provisional premium",
+      "Annual Premium Payable - exclusive of IPT",
+      "Estimated Premium (excluding IPT)",
+      "Flat Premium"
     ],
     "minimum_annual_premium": [
-      "Minimum Premium", "MAP", "Minimum and Deposit Premium",
-      "Minimum Premium Amount", "Minimum Premium (excluding IPT)"
+      "Minimum Premium",
+      "MAP",
+      "Minimum and Deposit Premium",
+      "Minimum Premium Amount",
+      "Minimum Premium (excluding IPT)"
     ],
     "credit_limit_charges": [
-      "Credit Limit Fee", "Buyer Underwriting Charges", "Limit Assessment Fee",
-      "Credit Opinion Charges", "Limit Management Charge",
-      "Annual Administration Charge", "Approved Limit fees",
+      "Credit Limit Fee",
+      "Buyer Underwriting Charges",
+      "Limit Assessment Fee",
+      "Credit Opinion Charges",
+      "Limit Management Charge",
+      "Annual Administration Charge",
+      "Approved Limit fees",
       "Fees due to the Information Service Provider"
     ],
     "indemnity": [
-      "Indemnity", "Insured Percentage", "Cover Level", "% of Cover",
-      "Agreed Percentage", "Insured %", "Guaranteed Percentage"
+      "Indemnity",
+      "Insured Percentage",
+      "Cover Level",
+      "% of Cover",
+      "Agreed Percentage",
+      "Insured %",
+      "Guaranteed Percentage"
     ],
     "excess": [
-      "Deductible", "Minimum Retention", "Excess", "Uninsured Amount",
-      "Each and Every Loss Deductible", "Aggregate First Loss",
-      "Excess amount", "Level of Excess", "Deductible Value"
+      "Deductible",
+      "Minimum Retention",
+      "Excess",
+      "Uninsured Amount",
+      "Each and Every Loss Deductible",
+      "Aggregate First Loss",
+      "Excess amount",
+      "Level of Excess",
+      "Deductible Value"
     ],
     "excess_type": [
-      "Each and Every Loss", "Aggregate First Loss", "Non Qualifying Loss",
-      "Minimum Retention", "Threshold", "Principal Customer Level", "Deductible",
-      "First Loss", "Non-Qualifying Loss", "Each and Every First Loss",
-      "Each and Every Indemnity Deductible", "Deductible Type",
+      "Each and Every Loss",
+      "Aggregate First Loss",
+      "Non Qualifying Loss",
+      "Minimum Retention",
+      "Threshold",
+      "Principal Customer Level",
+      "Deductible",
+      "First Loss",
+      "Non-Qualifying Loss",
+      "Each and Every First Loss",
+      "Each and Every Indemnity Deductible",
+      "Deductible Type",
       "Each & Every"
     ],
     "max_annual_liability": [
-      "Maximum Liability", "Maximum Aggregate Liability", "MAL",
-      "Maximum Payable", "Insurer's Maximum Liability", "Policy Maximum Liability",
+      "Maximum Liability",
+      "Maximum Aggregate Liability",
+      "MAL",
+      "Maximum Payable",
+      "Insurer's Maximum Liability",
+      "Policy Maximum Liability",
       "Insurers Maximum Liability"
     ],
     "discretionary_limit": [
-      "Discretionary Limit", "DL", "Discretionary Credit Limit",
-      "Self-Underwriting Limit", "Discretionary Limit amount"
+      "Discretionary Limit",
+      "DL",
+      "Discretionary Credit Limit",
+      "Self-Underwriting Limit",
+      "Discretionary Limit amount"
     ],
     "max_terms_of_payment": [
-      "Maximum Terms of Payment", "MTP", "Maximum Credit Terms",
-      "Terms of Payment", "Max credit terms", "Maximum Credit Period"
+      "Maximum Terms of Payment",
+      "MTP",
+      "Maximum Credit Terms",
+      "Terms of Payment",
+      "Max credit terms",
+      "Maximum Credit Period"
     ],
     "max_extension_period": [
-      "Maximum Extension Period", "MEP", "Grace Period",
+      "Maximum Extension Period",
+      "MEP",
+      "Grace Period",
       "Time Limit for Notification"
     ],
     "buyer_name": [
-      "Buyer Name", "Customer", "Buyer", "Insured Buyer", "Top Customers"
+      "Buyer Name",
+      "Customer",
+      "Buyer",
+      "Insured Buyer",
+      "Top Customers"
     ],
     "company_number": [
-      "Company registration number", "Company No.", "Companies House Number",
-      "Registration Number", "Co. Reg. No.", "Company Reg"
+      "Company registration number",
+      "Company No.",
+      "Companies House Number",
+      "Registration Number",
+      "Co. Reg. No.",
+      "Company Reg"
     ],
     "limit_required": [
-      "Application Amount", "Limit Requested", "Limit Required",
-      "Amount Applied For", "Requested Credit Limit", "Limit Required (GBP)"
+      "Application Amount",
+      "Limit Requested",
+      "Limit Required",
+      "Amount Applied For",
+      "Requested Credit Limit",
+      "Limit Required (GBP)"
     ],
     "limit_offered": [
-      "Amount Agreed", "Limit Approved", "Limit Granted", "Limit Offered",
-      "Credit Limit Decision", "Approved Credit Limit"
+      "Amount Agreed",
+      "Limit Approved",
+      "Limit Granted",
+      "Limit Offered",
+      "Credit Limit Decision",
+      "Approved Credit Limit"
     ]
   },
-  "insurers": {}
+  "insurers": {},
+  "rules": {
+    "nexus": {
+      "max_terms_of_payment": [
+        {
+          "match": "open credit\\s+(?:terms\\s+)?(?:not\\s+exceeding|up\\s+to|of)?\\s*(?P<days>\\d+)\\s*days?\\s+(?:from\\s+)?(?:the\\s+)?end\\s+of\\s+(?:the\\s+)?month",
+          "render": "{days} days end of month"
+        },
+        {
+          "match": "open credit\\s+(?:terms\\s+)?(?:not\\s+exceeding|up\\s+to|of)?\\s*(?P<days>\\d+)\\s*days?\\s+(?:from\\s+)?(?:the\\s+)?(?:date\\s+of\\s+)?invoice",
+          "render": "{days} days date of invoice"
+        }
+      ]
+    }
+  }
 }

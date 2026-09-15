@@ -82,7 +82,7 @@ export const DOC_KIND_META: Record<DocKind, { title: string; hint: string; accep
   limits: {
     title: "Credit-limit documents",
     hint: "PDF or Excel schedules. Optional; some insurers attach limits to the quote.",
-    accept: ".pdf,.xlsx,.xls,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel",
+    accept: ".pdf,.xlsx,.xlsm,.xls,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel.sheet.macroEnabled.12,application/vnd.ms-excel",
     multiple: true,
   },
   expiring: {
@@ -95,7 +95,7 @@ export const DOC_KIND_META: Record<DocKind, { title: string; hint: string; accep
 
 const ACCEPTED_EXT: Record<DocKind, readonly string[]> = {
   quote: ["pdf"],
-  limits: ["pdf", "xlsx", "xls"],
+  limits: ["pdf", "xlsx", "xlsm", "xls"],
   expiring: ["pdf"],
 };
 

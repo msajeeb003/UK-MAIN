@@ -63,7 +63,7 @@ def test_create_returns_resource_with_named_insurers(clean):
     assert body["project_type"] == "renewal" and body["status"] == "draft"
     assert [i["id"] for i in body["insurers_approached"]] == ["allianz", "coface", "qbe"]
     assert [i["position"] for i in body["insurers_approached"]] == [0, 1, 2]
-    assert body["insurers_approached"][0]["name"] == "Allianz Trade"
+    assert body["insurers_approached"][0]["name"] == "Allianz"
     assert body["owner_email"] and body["updated_by"] == body["owner_email"]
     assert body["created_at"] and body["updated_at"] and body["generated_at"] is None
     assert body["state"]["columns"] == []

@@ -36,7 +36,7 @@ from app.services import apply
 from app.services import documents as docs
 from app.services import exports as exports_svc
 from app.services import projects as projects_repo
-from app.services.library import active_insurers
+from app.services.library import active_insurers, presentation_wording
 from app.services.pdf_convert import converter_in_use, render_pdf
 from app.services.pipeline import EngineOverride, FileKind, StepRecorder, run_extraction_pipeline
 from app.services.presentation import (
@@ -87,8 +87,20 @@ async def insurers() -> dict:
     Served from config/insurers.json — configuration, not code, so edits
     take effect without a release.
     """
-    return {"insurers": [{"id": i["id"], "name": i["name"], "debt_collection": i["debt_collection"]}
-                         for i in active_insurers()]}
+    return {"insurers": [
+        {"id": i["id"], "name": i["name"], "debt_collection": i["debt_collection"],
+         **({"debt_collection_label": i["debt_collection_label"]} if i.get("debt_collection_label") else {})}
+        for i in active_insurers()
+    ]}
+
+
+@router.get("/presentation/wording")
+async def presentation_wording_endpoint(user: Annotated[dict, Depends(require_user)]) -> dict:
+    """The fixed presentation wording (BRD 2.7 / 2.8) the deck renders —
+    served from config/presentation.json so the review and recommendation
+    screens preview exactly what will be generated."""
+    del user
+    return presentation_wording()
 
 
 def _http_from_pipeline_error(exc: PipelineError, context: str) -> HTTPException:
@@ -254,7 +266,7 @@ def _resolve_file_kind(filename: str, content_type: str | None) -> FileKind:
     raise HTTPException(
         status_code=415,
         detail=(
-            "Only PDF and Excel (.xlsx) files are accepted (got "
+            "Only PDF and Excel (.xlsx, .xlsm, .xls) files are accepted (got "
             f"{content_type or 'unknown content type'})."
         ),
     )

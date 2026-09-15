@@ -6,7 +6,7 @@ deck. The BRD 2.5 export gate is enforced server-side.
 
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 # The 16-row comparison list (BRD 2.3): "Insurer" is the column heading;
 # these are the rows, in the order and wording of the brokerage's approved
@@ -92,8 +92,9 @@ class PresentationRequest(BaseModel):
     client_name: str = Field(min_length=1, max_length=200)
     reference: str = Field(default="", max_length=60)
     project_type: Literal["new", "renewal"]
-    # BRD layout rule: one to six insurer columns.
-    columns: list[PresentationColumn] = Field(min_length=1, max_length=6)
+    # BRD layout rule: one to six insurer columns. A limits-only project
+    # ("Ready when ready", Feedback Round 1 D1) may have none.
+    columns: list[PresentationColumn] = Field(default_factory=list, max_length=6)
     recommended_id: str | None = None
     approached_insurers: list[str] = Field(
         default_factory=list,
@@ -111,6 +112,14 @@ class PresentationRequest(BaseModel):
         description=(
             "Field names the broker confirmed on the review screen. All of "
             "BRD 2.5's four key values must be present or generation is "
-            "refused."
+            "refused (not required when there are no quote columns)."
         ),
     )
+
+    @model_validator(mode="after")
+    def _something_to_present(self) -> "PresentationRequest":
+        if not self.columns and not self.credit_limits:
+            raise ValueError(
+                "Nothing to present: upload at least one quote or a credit-limit schedule."
+            )
+        return self

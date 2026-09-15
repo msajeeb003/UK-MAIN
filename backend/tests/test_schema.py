@@ -24,7 +24,6 @@ EXPECTED_FIELDS = {
     "discretionary_limit",
     "max_terms_of_payment",
     "max_extension_period",
-    "additional_info",
     "buyer_credit_limits",
 }
 

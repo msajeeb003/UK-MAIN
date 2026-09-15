@@ -23,6 +23,8 @@ from pptx.util import Inches, Pt
 from app.core.errors import ExportBlockedError, InvalidDocumentError
 from app.models.presentation import PRESENTATION_ROWS, PresentationRequest
 from app.models.schemas import CONFIRM_REQUIRED_FIELDS
+from app.services.library import presentation_wording
+from app.services.money import format_money, render_value, sort_limit_rows
 
 # ── Brand palette (from the approved sample deck) ────────────────────────
 NAVY = (0x12, 0x39, 0x5E)
@@ -36,98 +38,24 @@ PANEL = (0xF5, 0xF6, 0xF8)
 WHITE = (0xFF, 0xFF, 0xFF)
 LINE = (0x30, 0x30, 0x30)
 
-# ── Fixed template wording (from the sample deck — never editable out) ───
-BRAND_NAME = "UK Credit Insurance Brokers"
-BRAND_SITE = "ukcreditinsurance.com"
-BRAND_PHONE = "0845 3222 525"
-BRAND_EMAIL = "hello@ukcreditinsurance.com"
+# ── Fixed template wording — configuration, not code ────────────────────
+# backend/config/presentation.json (BRD 2.7 / 2.8, rule "Regulatory wording
+# is fixed"): re-read on change, never editable out of a generated deck.
 
-ABOUT_TEXT = (
-    "UK Credit Insurance Brokers are one of the top UK specialist "
-    "insurance brokers operating in the Trade Credit Insurance market.\n\n"
-    "Alongside this we are also able to support clients with the "
-    "following needs:\n"
-    "• Funding - including invoice finance\n"
-    "• Surety Bonds\n"
-    "• Commercial Insurance\n"
-    "• Debt Collection\n\n"
-    f"Get in touch to find out more:\n{BRAND_PHONE}"
-)
-FEEDBACK_INTRO = (
-    "We are pleased to present our feedback of terms negotiated with the "
-    "credit insurance market. These terms are based upon the information "
-    "you have detailed when you completed the UK Credit Insurance Brokers "
-    "Enquiry Form."
-)
-FAIR_PRESENTATION_TEXT = (
-    "The Insurance Act 2015 identifies the 'Duty of Fair Presentation'. "
-    "It is your responsibility to provide complete and accurate "
-    "information when taking out an insurance policy, throughout the "
-    "life of the policy and when you renew the policy. You must disclose "
-    "any material circumstance you know or ought to know following a "
-    "reasonable search of your business. Material facts are information "
-    "that might influence an Insurers decision in deciding whether or "
-    "not to accept the risk and in setting terms and premiums. The "
-    "remedies available to an Insurer following any breach in this duty "
-    "include payment of a claim being reduced, additional terms being "
-    "imposed and avoidance of the policy by the Insurer. If you are "
-    "aware of any material changes or are in doubt whether certain "
-    "information is relevant then please disclose this to us in order "
-    "that we can update the Insurers."
-)
-TERMS_NOTES_TEXT = (
-    "All terms exclude cover for certain types of fraud, disputes and "
-    "accounts that are seriously overdue at inception of the policy. "
-    "They also exclude VAT."
-)
-# Fixed closing wording from the sample deck's Feedback of Terms page
-# (BRD 2.7: ~95% fixed FCA-type wording, identical on every presentation;
-# 2.8: regulatory wording). Purely standard sentences with no variable
-# content — the turnover figure and policy basis are deliberately excluded
-# here as they are not fixed (see the sign-off note).
-TERMS_CLOSING_TEXT = (
-    "Although we have access to the whole market, some were not approached "
-    "due to the nature of their business, turnover or premium requirements, "
-    "or other prevailing factors.\n"
-    "Full details of cover and any exclusions can be found in the individual "
-    "insurers policy wordings.\n"
-    "Please note all terms are non-binding until receipt, and acceptance, by "
-    "the Insurer of their completed and signed proposal form.\n"
-    "Please see accompanying Demand and Needs Statement for more detail of "
-    "our recommendation."
-)
-DEMANDS_TEXT = (
-    "As part of our discussions, we have identified that a credit "
-    "insurance policy will help protect the business against potential "
-    "bad debts, and will aid in any future growth plans.\n\n"
-    "In accordance with the Financial Conduct Authority (FCA) "
-    "regulations, we are required to ensure that the policy we are "
-    "recommending is suitable for your needs."
-)
-RECOMMENDATION_WORDING = (
-    "The policy we propose to arrange is provided by {name}, which is "
-    "one of the UK's leading Credit Insurance companies. An explanation "
-    "of the proposed policy is included in the policy documents. We are "
-    "not contractually obliged to purchase insurance products from "
-    "{name}. Our past experience, and analysis of the market, has shown "
-    "that the cover provided by {name} is comprehensive and its premiums "
-    "competitive."
-)
-OUR_STATUS_TEXT = (
-    "We are included on a register maintained by the FCA which allows us "
-    "to carry out insurance distribution activity, such as advising, "
-    "selling and administration of insurance contracts. This part of our "
-    "business, including arrangements for complaints or redress if "
-    "something goes wrong, is regulated by the relevant representative "
-    "body. The FCA's register can be accessed via their website at "
-    "www.fca.org.uk/register"
-)
-CONTACT_TEXT = (
-    "Our phone line is always open and we love to talk!\n"
-    "Don't forget, we work for you so contact us at any time to discuss "
-    "your policy, your clients or your financial needs."
-)
-CONTACT_LINES = [BRAND_PHONE, f"www.{BRAND_SITE}", BRAND_EMAIL]
+
+def _wording() -> dict:
+    return presentation_wording()
+
+
+def _text(key: str) -> str:
+    return str(_wording()[key])
+
+
+def _important_information() -> str:
+    """The static block that closes the Feedback of Terms page (Feedback
+    Round 1, D4): verbatim paragraphs, printed under the named declined
+    line."""
+    return "\n".join(str(p).strip() for p in _wording()["important_information"])
 
 
 def cover_title(req: PresentationRequest) -> str:
@@ -140,7 +68,10 @@ def cover_title(req: PresentationRequest) -> str:
 
 
 def check_export_gate(req: PresentationRequest) -> None:
-    """BRD 2.5/2.8: export blocked until the four key values are confirmed."""
+    """BRD 2.5/2.8: export blocked until the four key values are confirmed.
+    A limits-only project has no quote columns and nothing to confirm (D1)."""
+    if not req.columns:
+        return
     missing = [f for f in CONFIRM_REQUIRED_FIELDS if f not in req.confirmed_fields]
     if missing:
         raise ExportBlockedError(
@@ -187,6 +118,8 @@ def _subtitle(req: PresentationRequest) -> str:
 
 def _approached_sentence(req: PresentationRequest) -> str:
     names = req.approached_insurers or [c.name for c in req.columns]
+    if not names:
+        return ""
     return (
         "We approached the following insurers to quote for your business: "
         + ", ".join(names) + "."
@@ -241,9 +174,20 @@ def _reason_lines(req: PresentationRequest) -> list[str]:
     return [f"{i}. {ln}" for i, ln in enumerate(lines, start=1)]
 
 
+def _limit_columns(req: PresentationRequest) -> list:
+    """Insurer columns of the credit-limit page: the quotes only — the
+    expiring policy has no column or row there (Feedback Round 1, D3)."""
+    return [c for c in req.columns if not _is_expiring(c)]
+
+
+def _limit_rows(req: PresentationRequest) -> list:
+    """Buyer rows, largest limit required first (D2)."""
+    return sort_limit_rows(list(req.credit_limits), lambda r: r.required)
+
+
 def _limits_headers(req: PresentationRequest) -> list[str]:
     return (["Top Customers", "Company Reg", "Limit Required (GBP)"]
-            + [c.name for c in req.columns])
+            + [c.name for c in _limit_columns(req)])
 
 
 def _money_total(values: list[str]) -> str:
@@ -258,9 +202,10 @@ def _money_total(values: list[str]) -> str:
 
 
 def _limits_total_row(req: PresentationRequest) -> list[str]:
-    return (["Total", "", _money_total([r.required for r in req.credit_limits])]
-            + [_money_total([r.offers.get(c.id, "") for r in req.credit_limits])
-               for c in req.columns])
+    rows = _limit_rows(req)
+    return (["Total", "", _money_total([r.required for r in rows])]
+            + [_money_total([r.offers.get(c.id, "") for r in rows])
+               for c in _limit_columns(req)])
 
 
 def suggested_filename(req: PresentationRequest, extension: str) -> str:
@@ -313,7 +258,7 @@ def _add_accent(slide, x, y, w, h, color, rotation=18):
 
 
 def _brand_mark(slide, x=0.7, y=0.45):
-    _add_textbox(slide, x, y, 5.5, 0.8, BRAND_NAME, size=17, color=NAVY, bold=True)
+    _add_textbox(slide, x, y, 5.5, 0.8, _wording()["brand"]["name"], size=17, color=NAVY, bold=True)
 
 
 def _style_cell(cell, text, *, size, bold=False, color=INK, fill=None):
@@ -350,23 +295,23 @@ def build_pptx(req: PresentationRequest) -> bytes:
                  size=36, color=INK, bold=True)
     _add_textbox(slide, 0.7, 5.0, 8.0, 0.5, _subtitle(req), size=14, color=INK2)
     _add_textbox(slide, 0.7, 6.35, 8.0, 0.4, "Visit Our Website", size=11, color=INK2)
-    _add_textbox(slide, 0.7, 6.7, 8.0, 0.5, BRAND_SITE, size=16, color=INK, bold=True)
+    _add_textbox(slide, 0.7, 6.7, 8.0, 0.5, _wording()["brand"]["site"], size=16, color=INK, bold=True)
 
     # ── 2. About Us ──────────────────────────────────────────────────────
     slide = prs.slides.add_slide(blank)
     _add_accent(slide, -1.6, -1.4, 3.6, 10.5, NAVY, rotation=15)
     _add_accent(slide, 2.1, -1.0, 1.6, 9.5, TEAL, rotation=15)
     _add_textbox(slide, 6.2, 0.8, 6.3, 0.7, "About Us", size=30, bold=True)
-    _add_textbox(slide, 6.2, 1.7, 6.4, 5.2, ABOUT_TEXT, size=14, color=INK2)
+    _add_textbox(slide, 6.2, 1.7, 6.4, 5.2, _text("about"), size=14, color=INK2)
 
     # ── 3. Feedback of Terms ─────────────────────────────────────────────
     slide = prs.slides.add_slide(blank)
     _add_textbox(slide, 0.8, 0.35, 11.7, 0.55, "Feedback of Terms", size=24, bold=True)
-    _add_textbox(slide, 0.8, 1.0, 11.7, 0.7, FEEDBACK_INTRO, size=10.5, color=INK2)
-    _add_textbox(slide, 0.8, 1.75, 11.7, 1.7, FAIR_PRESENTATION_TEXT,
+    _add_textbox(slide, 0.8, 1.0, 11.7, 0.7, _text("feedback_intro"), size=10.5, color=INK2)
+    _add_textbox(slide, 0.8, 1.75, 11.7, 1.7, _text("fair_presentation"),
                  size=9.5, color=INK2)
     _add_textbox(slide, 0.8, 3.5, 11.7, 0.3, "TERMS", size=10.5, color=INK3, bold=True)
-    _add_textbox(slide, 0.8, 3.8, 11.7, 0.5, TERMS_NOTES_TEXT, size=9.5, color=INK2)
+    _add_textbox(slide, 0.8, 3.8, 11.7, 0.5, _text("terms_notes"), size=9.5, color=INK2)
     _add_textbox(slide, 0.8, 4.35, 11.7, 0.4, _approached_sentence(req), size=10.5)
     declined_line = _declined_sentence(req)
     y = 4.8
@@ -374,7 +319,7 @@ def build_pptx(req: PresentationRequest) -> bytes:
         _add_textbox(slide, 0.8, y, 11.7, 0.4, declined_line,
                      size=10.5, color=NAVY, bold=True)
         y += 0.45
-    _add_textbox(slide, 0.8, y, 11.7, 2.0, TERMS_CLOSING_TEXT, size=9.5, color=INK2)
+    _add_textbox(slide, 0.8, y, 11.7, 2.0, _important_information(), size=9.5, color=INK2)
 
     # ── 4. Terms Comparison ──────────────────────────────────────────────
     slide = prs.slides.add_slide(blank)
@@ -384,7 +329,7 @@ def build_pptx(req: PresentationRequest) -> bytes:
     n_rows = 1 + len(PRESENTATION_ROWS)
     table_w = 12.1
     label_w = 3.0
-    value_w = (table_w - label_w) / n_cols
+    value_w = (table_w - label_w) / max(n_cols, 1)
     shape = slide.shapes.add_table(
         n_rows, 1 + n_cols, Inches(0.6), Inches(0.9), Inches(table_w), Inches(5.8)
     )
@@ -401,7 +346,7 @@ def build_pptx(req: PresentationRequest) -> bytes:
     for r, (key, label) in enumerate(PRESENTATION_ROWS, start=1):
         _style_cell(table.cell(r, 0), label, size=9, bold=True)
         for c, col in enumerate(req.columns, start=1):
-            _style_cell(table.cell(r, c), _cell_text(col.values.get(key)),
+            _style_cell(table.cell(r, c), render_value(key, col.values.get(key)),
                         size=9, fill=_col_fill(req, col))
     if req.notes.strip():
         _add_textbox(slide, 0.6, 6.85, 12.1, 0.55, req.notes.strip(),
@@ -409,27 +354,29 @@ def build_pptx(req: PresentationRequest) -> bytes:
 
     # ── 5. Credit Limits (omitted cleanly when none) ─────────────────────
     if req.credit_limits:
+        limit_cols = _limit_columns(req)
+        limit_rows = _limit_rows(req)
         slide = prs.slides.add_slide(blank)
         _add_textbox(slide, 0.6, 0.35, 12, 0.6, "Credit Limits", size=24, bold=True)
-        rows = 2 + len(req.credit_limits)  # header + buyers + Total
-        cols = 3 + n_cols
+        rows = 2 + len(limit_rows)  # header + buyers + Total
+        cols = 3 + len(limit_cols)
         shape = slide.shapes.add_table(
             rows, cols, Inches(0.6), Inches(1.1), Inches(12.1),
             Inches(min(5.9, 0.34 * rows)),
         )
         table = shape.table
         for c, header in enumerate(_limits_headers(req)):
-            col_obj = req.columns[c - 3] if c >= 3 else None
+            col_obj = limit_cols[c - 3] if c >= 3 else None
             fill = _col_fill(req, col_obj) if col_obj is not None else None
             _style_cell(table.cell(0, c), header, size=10, bold=True,
                         color=NAVY if col_obj is not None and _is_rec(req, col_obj) else INK,
                         fill=fill or PANEL)
-        for r, row in enumerate(req.credit_limits, start=1):
+        for r, row in enumerate(limit_rows, start=1):
             _style_cell(table.cell(r, 0), _cell_text(row.buyer), size=9.5)
             _style_cell(table.cell(r, 1), _cell_text(row.company_number), size=9.5)
-            _style_cell(table.cell(r, 2), _cell_text(row.required), size=9.5)
-            for c, col in enumerate(req.columns, start=3):
-                _style_cell(table.cell(r, c), _cell_text(row.offers.get(col.id)),
+            _style_cell(table.cell(r, 2), format_money(row.required), size=9.5)
+            for c, col in enumerate(limit_cols, start=3):
+                _style_cell(table.cell(r, c), format_money(row.offers.get(col.id)),
                             size=9.5, fill=_col_fill(req, col))
         for c, text in enumerate(_limits_total_row(req)):
             _style_cell(table.cell(rows - 1, c), text, size=9.5, bold=True,
@@ -439,11 +386,11 @@ def build_pptx(req: PresentationRequest) -> bytes:
     slide = prs.slides.add_slide(blank)
     _add_textbox(slide, 0.8, 0.4, 11.7, 0.6,
                  "Our understanding of your demands & needs:", size=22, bold=True)
-    _add_textbox(slide, 0.8, 1.1, 11.7, 1.3, DEMANDS_TEXT, size=11.5, color=INK2)
+    _add_textbox(slide, 0.8, 1.1, 11.7, 1.3, _text("demands"), size=11.5, color=INK2)
     if _has_recommendation(req):
         _add_textbox(slide, 0.8, 2.55, 11.7, 0.4, "Our recommendation:", size=14, bold=True)
         _add_textbox(slide, 0.8, 3.0, 11.7, 1.5,
-                     RECOMMENDATION_WORDING.format(name=_recommended_name(req)),
+                     _text("recommendation").format(name=_recommended_name(req)),
                      size=11.5, color=INK2)
     reasons = _reason_lines(req) if _has_recommendation(req) else []
     if reasons:
@@ -452,15 +399,15 @@ def build_pptx(req: PresentationRequest) -> bytes:
                      "with our recommendation:", size=11.5, bold=True)
         _add_textbox(slide, 0.8, 5.0, 11.7, 1.0, "\n".join(reasons), size=11.5)
     _add_textbox(slide, 0.8, 6.05, 11.7, 0.35, "Our status:", size=12, bold=True)
-    _add_textbox(slide, 0.8, 6.4, 11.7, 1.0, OUR_STATUS_TEXT, size=9, color=INK2)
+    _add_textbox(slide, 0.8, 6.4, 11.7, 1.0, _text("our_status"), size=9, color=INK2)
 
     # ── 7. Contact Us ────────────────────────────────────────────────────
     slide = prs.slides.add_slide(blank)
     _add_accent(slide, 10.4, -1.4, 3.6, 10.5, TEAL, rotation=-15)
     _add_accent(slide, 9.3, -1.0, 1.4, 9.8, NAVY, rotation=-15)
     _add_textbox(slide, 0.8, 0.8, 7.5, 0.7, "Contact Us", size=30, bold=True)
-    _add_textbox(slide, 0.8, 1.9, 7.6, 1.4, CONTACT_TEXT, size=13.5, color=INK2)
-    for i, line in enumerate(CONTACT_LINES):
+    _add_textbox(slide, 0.8, 1.9, 7.6, 1.4, _text("contact"), size=13.5, color=INK2)
+    for i, line in enumerate(_wording()["contact_lines"]):
         pill = slide.shapes.add_shape(
             MSO_SHAPE.ROUNDED_RECTANGLE, Inches(0.8), Inches(3.6 + i * 0.85),
             Inches(4.6), Inches(0.6),
@@ -613,25 +560,25 @@ def build_pdf(req: PresentationRequest) -> bytes:
     # ── 1. Cover ─────────────────────────────────────────────────────────
     page = doc.new_page(width=PAGE_W, height=PAGE_H)
     _pdf_cover_accents(page, right=True)
-    _pdf_text(page, MARGIN, 60, 420, 26, BRAND_NAME, size=15, color=NAVY, bold=True)
+    _pdf_text(page, MARGIN, 60, 420, 26, _wording()["brand"]["name"], size=15, color=NAVY, bold=True)
     _pdf_text(page, MARGIN, 190, 560, 110, _cover_heading(req), size=27, bold=True)
     _pdf_text(page, MARGIN, 330, 500, 24, _subtitle(req), size=12, color=INK2)
     _pdf_text(page, MARGIN, 430, 400, 18, "Visit Our Website", size=10, color=INK2)
-    _pdf_text(page, MARGIN, 450, 400, 22, BRAND_SITE, size=13, bold=True)
+    _pdf_text(page, MARGIN, 450, 400, 22, _wording()["brand"]["site"], size=13, bold=True)
 
     # ── 2. About Us ──────────────────────────────────────────────────────
     page = doc.new_page(width=PAGE_W, height=PAGE_H)
     _pdf_cover_accents(page, right=False)
     _pdf_text(page, 480, 60, 420, 34, "About Us", size=22, bold=True)
-    _pdf_text(page, 480, 110, 420, 360, ABOUT_TEXT, size=11.5, color=INK2)
+    _pdf_text(page, 480, 110, 420, 360, _text("about"), size=11.5, color=INK2)
 
     # ── 3. Feedback of Terms ─────────────────────────────────────────────
     page = doc.new_page(width=PAGE_W, height=PAGE_H)
     _pdf_text(page, MARGIN, 30, 840, 28, "Feedback of Terms", size=18, bold=True)
-    _pdf_text(page, MARGIN, 66, 852, 38, FEEDBACK_INTRO, size=9, color=INK2)
-    _pdf_text(page, MARGIN, 108, 852, 150, FAIR_PRESENTATION_TEXT, size=8.5, color=INK2)
+    _pdf_text(page, MARGIN, 66, 852, 38, _text("feedback_intro"), size=9, color=INK2)
+    _pdf_text(page, MARGIN, 108, 852, 150, _text("fair_presentation"), size=8.5, color=INK2)
     _pdf_text(page, MARGIN, 262, 840, 14, "TERMS", size=9, color=INK3, bold=True)
-    _pdf_text(page, MARGIN, 278, 852, 30, TERMS_NOTES_TEXT, size=8.5, color=INK2)
+    _pdf_text(page, MARGIN, 278, 852, 30, _text("terms_notes"), size=8.5, color=INK2)
     _pdf_text(page, MARGIN, 322, 852, 20, _approached_sentence(req), size=9.5)
     declined_line = _declined_sentence(req)
     y = 350
@@ -639,14 +586,14 @@ def build_pdf(req: PresentationRequest) -> bytes:
         _pdf_text(page, MARGIN, y, 852, 20, declined_line,
                   size=9.5, color=NAVY, bold=True)
         y += 26
-    _pdf_text(page, MARGIN, y, 852, 130, TERMS_CLOSING_TEXT, size=8.5, color=INK2)
+    _pdf_text(page, MARGIN, y, 852, 130, _important_information(), size=8.5, color=INK2)
 
     # ── 4. Terms Comparison ──────────────────────────────────────────────
     page = doc.new_page(width=PAGE_W, height=PAGE_H)
     _pdf_text(page, MARGIN, 22, 852, 30, "Terms Comparison", size=17, bold=True)
     n_cols = len(req.columns)
     label_w = 200.0
-    value_w = (PAGE_W - 2 * MARGIN - label_w) / n_cols
+    value_w = (PAGE_W - 2 * MARGIN - label_w) / max(n_cols, 1)
     widths = [label_w] + [value_w] * n_cols
     header = [("Insurer", PANEL, True, INK)] + [
         (c.name, _col_fill(req, c) or PANEL, True,
@@ -657,7 +604,7 @@ def build_pdf(req: PresentationRequest) -> bytes:
     for key, label in PRESENTATION_ROWS:
         row = [(label, None, True, INK)]
         for col in req.columns:
-            row.append((_cell_text(col.values.get(key)), _col_fill(req, col),
+            row.append((render_value(key, col.values.get(key)), _col_fill(req, col),
                         False, INK))
         body.append(row)
     end_y = _pdf_table(page, MARGIN, 56, widths, [header] + body,
@@ -668,25 +615,27 @@ def build_pdf(req: PresentationRequest) -> bytes:
 
     # ── 5. Credit Limits (omitted cleanly when none) ─────────────────────
     if req.credit_limits:
+        limit_cols = _limit_columns(req)
+        limit_rows = _limit_rows(req)
         page = doc.new_page(width=PAGE_W, height=PAGE_H)
         _pdf_text(page, MARGIN, 30, 852, 30, "Credit Limits", size=17, bold=True)
         fixed = [200.0, 100.0, 120.0]
-        value_w = (PAGE_W - 2 * MARGIN - sum(fixed)) / n_cols
-        widths = fixed + [value_w] * n_cols
+        value_w = (PAGE_W - 2 * MARGIN - sum(fixed)) / max(len(limit_cols), 1)
+        widths = fixed + [value_w] * len(limit_cols)
         header = [(h, PANEL, True,
-                   NAVY if i >= 3 and _is_rec(req, req.columns[i - 3]) else INK)
+                   NAVY if i >= 3 and _is_rec(req, limit_cols[i - 3]) else INK)
                   for i, h in enumerate(_limits_headers(req))]
-        for i, col in enumerate(req.columns, start=3):
+        for i, col in enumerate(limit_cols, start=3):
             fill = _col_fill(req, col)
             if fill:
                 header[i] = (header[i][0], fill, True, header[i][3])
         body = []
-        for row in req.credit_limits:
+        for row in limit_rows:
             cells = [(_cell_text(row.buyer), None, False, INK),
                      (_cell_text(row.company_number), None, False, INK2),
-                     (_cell_text(row.required), None, False, INK)]
-            for col in req.columns:
-                cells.append((_cell_text(row.offers.get(col.id)),
+                     (format_money(row.required), None, False, INK)]
+            for col in limit_cols:
+                cells.append((format_money(row.offers.get(col.id)),
                               _col_fill(req, col), False, INK))
             body.append(cells)
         total = [(t, PANEL, True, INK) for t in _limits_total_row(req)]
@@ -697,11 +646,11 @@ def build_pdf(req: PresentationRequest) -> bytes:
     page = doc.new_page(width=PAGE_W, height=PAGE_H)
     _pdf_text(page, MARGIN, 30, 852, 30,
               "Our understanding of your demands & needs:", size=16, bold=True)
-    _pdf_text(page, MARGIN, 70, 852, 74, DEMANDS_TEXT, size=10, color=INK2)
+    _pdf_text(page, MARGIN, 70, 852, 74, _text("demands"), size=10, color=INK2)
     if _has_recommendation(req):
         _pdf_text(page, MARGIN, 160, 852, 18, "Our recommendation:", size=11, bold=True)
         _pdf_text(page, MARGIN, 182, 852, 90,
-                  RECOMMENDATION_WORDING.format(name=_recommended_name(req)),
+                  _text("recommendation").format(name=_recommended_name(req)),
                   size=10, color=INK2)
     reasons = _reason_lines(req) if _has_recommendation(req) else []
     if reasons:
@@ -710,14 +659,14 @@ def build_pdf(req: PresentationRequest) -> bytes:
                   "with our recommendation:", size=10, bold=True)
         _pdf_text(page, MARGIN, 308, 852, 70, "\n".join(reasons), size=10)
     _pdf_text(page, MARGIN, 396, 852, 16, "Our status:", size=10, bold=True)
-    _pdf_text(page, MARGIN, 414, 852, 90, OUR_STATUS_TEXT, size=8.5, color=INK2)
+    _pdf_text(page, MARGIN, 414, 852, 90, _text("our_status"), size=8.5, color=INK2)
 
     # ── 7. Contact Us ────────────────────────────────────────────────────
     page = doc.new_page(width=PAGE_W, height=PAGE_H)
     _pdf_cover_accents(page, right=True)
     _pdf_text(page, MARGIN, 60, 500, 34, "Contact Us", size=22, bold=True)
-    _pdf_text(page, MARGIN, 120, 480, 70, CONTACT_TEXT, size=11.5, color=INK2)
-    for i, line in enumerate(CONTACT_LINES):
+    _pdf_text(page, MARGIN, 120, 480, 70, _text("contact"), size=11.5, color=INK2)
+    for i, line in enumerate(_wording()["contact_lines"]):
         y = 240 + i * 58
         page.draw_rect(pymupdf.Rect(MARGIN, y, MARGIN + 300, y + 36),
                        color=None, fill=_norm(NAVY))
@@ -746,10 +695,11 @@ def build_limits_xlsx(req: PresentationRequest) -> bytes:
     sheet.append(headers)
     for cell in sheet[1]:
         cell.font = XlsxFont(bold=True)
-    for row in req.credit_limits:
+    limit_cols = _limit_columns(req)
+    for row in _limit_rows(req):
         sheet.append(
-            [row.buyer, row.company_number, row.required]
-            + [row.offers.get(c.id, "") for c in req.columns]
+            [row.buyer, row.company_number, format_money(row.required)]
+            + [format_money(row.offers.get(c.id, "")) for c in limit_cols]
         )
     sheet.append(_limits_total_row(req))
     for cell in sheet[sheet.max_row]:

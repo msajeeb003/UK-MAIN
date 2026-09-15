@@ -82,8 +82,8 @@ def test_adding_a_legal_name_changes_the_next_extraction_mapping(admin):
     qbe = next(i for i in insurers if i["id"] == "qbe")
     qbe["legal_names"].append("Q-Be Underwriting Ltd")
     qbe["debt_collection"] = "included"                                        # rule change
-    aviva = next(i for i in insurers if i["id"] == "aviva")
-    aviva["active"] = False
+    zurich = next(i for i in insurers if i["id"] == "zurich")
+    zurich["active"] = False
     insurers.append({"id": "newco", "name": "NewCo Credit", "legal_names": ["New Company Insurance"],
                      "debt_collection": "outsourced", "active": True})
 
@@ -100,10 +100,10 @@ def test_adding_a_legal_name_changes_the_next_extraction_mapping(admin):
     assert "NewCo Credit" in build_system_prompt()
     # The setup list shows active insurers only; the config shows all.
     listed = [i["id"] for i in admin.get("/insurers").json()["insurers"]]
-    assert "aviva" not in listed and "newco" in listed
-    assert any(i["id"] == "aviva" and i["active"] is False for i in admin.get("/config/insurers").json()["insurers"])
+    assert "zurich" not in listed and "newco" in listed
+    assert any(i["id"] == "zurich" and i["active"] is False for i in admin.get("/config/insurers").json()["insurers"])
     # Old projects still resolve an inactive insurer's name.
-    assert library.match_insurer("Aviva")["id"] == "aviva"
+    assert library.match_insurer("Zurich")["id"] == "zurich"
 
     # Second save bumps the version; audited with who and when.
     res = admin.put("/config/insurers", json={"insurers": insurers})

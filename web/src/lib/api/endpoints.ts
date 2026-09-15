@@ -4,6 +4,7 @@
  */
 import { buildUrl, http, requestBlob } from "./client";
 import type {
+  PresentationWording,
   ClientErrorReport,
   DocKind,
   DocumentBatch,
@@ -259,6 +260,8 @@ export const extractionApi = {
 
 // ── /generate-presentation ──────────────────────────────────────────────
 export const presentationApi = {
+  /** The fixed wording the deck renders, so the S7 preview matches it exactly. */
+  wording: () => http.get<PresentationWording>("/presentation/wording"),
   async generate(
     format: ExportFormat,
     projectId: string,

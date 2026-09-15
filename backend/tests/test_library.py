@@ -6,7 +6,7 @@ from app.services.library import debt_collection_rule, get_terminology, match_in
 
 def test_debt_rule_included_insurers():
     """BRD 2.4: Allianz, Atradius and Coface default to Included."""
-    for name in ["Allianz Trade", "Atradius", "Coface"]:
+    for name in ["Allianz", "Atradius", "Coface"]:
         value, matched = debt_collection_rule(name)
         assert value == "Included"
         assert matched == name

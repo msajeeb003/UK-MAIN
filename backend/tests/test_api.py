@@ -23,7 +23,7 @@ def test_insurers_endpoint_serves_configuration(client):
     insurers = res.json()["insurers"]
     by_name = {i["name"]: i["debt_collection"] for i in insurers}
     # BRD 2.4 rule as configuration.
-    assert by_name["Allianz Trade"] == "included"
+    assert by_name["Allianz"] == "included"
     assert by_name["Atradius"] == "included"
     assert by_name["Coface"] == "included"
     assert by_name["QBE"] == "outsourced"

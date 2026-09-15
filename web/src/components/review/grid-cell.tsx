@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { ProjectState } from "@/lib/api/types";
 import type { FieldDef } from "@/lib/fields";
+import { isMoneyField, renderValue } from "@/lib/money";
 import {
   DEBT_OPTIONS,
   cellPage,
@@ -35,6 +36,8 @@ export interface GridCellProps {
   onSelect: (page: number | null) => void;
   /** Enter / Shift+Enter: move to the same column in the next / previous row. */
   onMove: (direction: 1 | -1) => void;
+  /** Wordings the Debt collection set field may hold (rule values + insurer labels). */
+  debtOptions?: readonly string[];
 }
 
 export const cellDomId = (colId: string, fieldKey: string) => `cell-${colId}-${fieldKey}`;
@@ -57,7 +60,7 @@ const PROVENANCE_TITLE: Record<CellProvenance, string> = {
  * - blank vs zero: a blank renders as "—" in a dashed field, a zero keeps
  *   its literal text ("0", "£0", "Nil") plus a "zero" tag.
  */
-export function GridCell({ project, col, field, recommended, onChange, onOpenSource, onSelect, onMove }: GridCellProps) {
+export function GridCell({ project, col, field, recommended, onChange, onOpenSource, onSelect, onMove, debtOptions }: GridCellProps) {
   const value = cellValue(project, col, field);
   const provenance = cellProvenance(project, col, field);
   const uncertain = cellUncertain(col, field);
@@ -71,6 +74,10 @@ export function GridCell({ project, col, field, recommended, onChange, onOpenSou
   // (undo, another upload), adopt it (derived-state-during-render pattern).
   const [text, setText] = useState(value);
   const [seen, setSeen] = useState(value);
+  // Money rows show the formatted figure while idle and the stored text
+  // while editing (B2: format at render time, never rewrite the value).
+  const [focused, setFocused] = useState(false);
+  const shown = focused || !isMoneyField(field.key) ? text : renderValue(field.key, text);
   if (seen !== value) {
     setSeen(value);
     setText(value);
@@ -104,7 +111,7 @@ export function GridCell({ project, col, field, recommended, onChange, onOpenSou
   };
 
   if (field.key === "type" || field.key === "debt") {
-    const options = field.key === "type" ? policyTypeOptions() : DEBT_OPTIONS;
+    const options = field.key === "type" ? policyTypeOptions() : (debtOptions ?? DEBT_OPTIONS);
     const known = options.includes(value);
     const inherited = field.key === "type" && !hasTypeOverride(col);
     return (
@@ -144,10 +151,16 @@ export function GridCell({ project, col, field, recommended, onChange, onOpenSou
             id={inputId}
             aria-label={label}
             title={PROVENANCE_TITLE[provenance]}
-            value={text}
+            value={shown}
             onChange={(e) => setText(e.target.value)}
-            onFocus={() => onSelect(page)}
-            onBlur={commit}
+            onFocus={() => {
+              setFocused(true);
+              onSelect(page);
+            }}
+            onBlur={() => {
+              commit();
+              setFocused(false);
+            }}
             onKeyDown={onKeyDown}
             placeholder={provenance === "blank" ? "—" : undefined}
             data-provenance={provenance}

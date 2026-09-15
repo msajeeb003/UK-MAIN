@@ -20,6 +20,16 @@ export const CONFIRM_LABELS: Record<ConfirmKey, string> = {
 
 export const DEBT_OPTIONS = ["Included", "Outsourced"] as const;
 
+/** Every wording the Debt collection set field may hold: the two rule values
+ *  plus each insurer's configured label (e.g. Cartan's "Inclusive collections"). */
+export function debtOptions(insurers: Insurer[]): string[] {
+  const out: string[] = [...DEBT_OPTIONS];
+  for (const ins of insurers) {
+    if (ins.debt_collection_label && !out.includes(ins.debt_collection_label)) out.push(ins.debt_collection_label);
+  }
+  return out;
+}
+
 export interface ReviewProjectState extends UploadProjectState {
   notes?: string;
   manualSeq?: number;

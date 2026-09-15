@@ -69,10 +69,13 @@ export function exportSummary(p: ProjectState, insurers: Insurer[]): ExportSumma
     .map((d) => d.name);
   const rec = recommendedColumn(p);
   const confirmed = confirmedFieldNames(p);
+  const buyerCount = creditRows(p).filter(rowHasContent).length;
   const blockers: string[] = [];
   if (!(p.clientName ?? "").trim()) blockers.push("Add the client name on the Setup step.");
-  if (!included.length) blockers.push("Upload at least one quote before generating.");
-  if (confirmed.length < 4) blockers.push(`Confirm the four key values on the Review step (${4 - confirmed.length} remaining).`);
+  // "Ready when ready": terms only, limits only, or both all generate (D1).
+  if (!included.length && !buyerCount) blockers.push("Upload at least one quote or a credit-limit schedule before generating.");
+  // The confirmation gate covers the quote terms; a limits-only deck has none to confirm.
+  if (included.length && confirmed.length < 4) blockers.push(`Confirm the four key values on the Review step (${4 - confirmed.length} remaining).`);
   return {
     clientName: (p.clientName ?? "").trim(),
     reference: (p.ref ?? "").trim(),
@@ -82,7 +85,7 @@ export function exportSummary(p: ProjectState, insurers: Insurer[]): ExportSumma
     declined,
     hasExpiring: columns.some((c) => c.expiring),
     recommended: rec?.name ?? null,
-    buyerCount: creditRows(p).filter(rowHasContent).length,
+    buyerCount,
     confirmedCount: confirmed.length,
     blockers,
   };

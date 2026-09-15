@@ -2,15 +2,17 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, type KeyboardEvent } from "react";
+import { useEffect, useState, type KeyboardEvent } from "react";
 
 import { ProjectScreen } from "@/components/projects/project-screen";
 import { SaveIndicator } from "@/components/review/review-screen";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useReviewDraft } from "@/hooks/use-review-draft";
+import { presentationApi } from "@/lib/api";
 import type { ProjectState } from "@/lib/api/types";
 import { FIELDS } from "@/lib/fields";
+import { formatMoney } from "@/lib/money";
 import { routes } from "@/lib/navigation";
 import {
   REASONS_GUIDE_CHARS,
@@ -67,6 +69,20 @@ function RecommendBody({ project }: { project: ProjectState }) {
   const recommendedId = rec?.id ?? null;
   const [reasons, setReasonsText] = useState(typeof p.reasons === "string" ? p.reasons : "");
   const [differences, setDifferencesText] = useState(typeof p.keyDifferences === "string" ? p.keyDifferences : "");
+  // The fixed wording is configuration on the server; preview exactly what the deck prints.
+  const [wording, setWording] = useState<string | undefined>(undefined);
+  useEffect(() => {
+    let cancelled = false;
+    presentationApi.wording().then(
+      (w) => {
+        if (!cancelled && typeof w.recommendation === "string") setWording(w.recommendation);
+      },
+      () => undefined,
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const points = reasonPoints(reasons);
   const over = reasons.length > REASONS_GUIDE_CHARS;
 
@@ -118,7 +134,7 @@ function RecommendBody({ project }: { project: ProjectState }) {
                     {col.manual && <span className="ml-2 rounded bg-warn-soft px-1.5 py-0.5 align-middle font-mono text-[9px] font-medium text-warn uppercase">Free format</span>}
                   </span>
                   <span className="block text-xs text-ink-2">
-                    Est. premium {cellValue(p, col, premiumField) || "—"} · {cellValue(p, col, indemnityField) || "—"} indemnity
+                    Est. premium {formatMoney(cellValue(p, col, premiumField)) || "—"} · {cellValue(p, col, indemnityField) || "—"} indemnity
                   </span>
                 </span>
                 {on && (
@@ -152,7 +168,7 @@ function RecommendBody({ project }: { project: ProjectState }) {
       <div className="mb-4 rounded-[14px] border border-line bg-surface px-[22px] py-5 shadow-card">
         <div className="label-mono mb-2.5 font-medium">Standard wording — fixed</div>
         <p className="text-[13.5px] leading-[1.65] text-ink-2">
-          {mergeSegments(rec?.name ?? null).map((seg, i) =>
+          {mergeSegments(rec?.name ?? null, wording).map((seg, i) =>
             seg.name ? (
               <strong key={i} className="rounded-[5px] bg-accent px-1.5 py-px font-semibold text-primary">
                 {seg.text}

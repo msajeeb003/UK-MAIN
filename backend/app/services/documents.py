@@ -27,6 +27,9 @@ logger = logging.getLogger(__name__)
 _CONTENT_TYPES = {
     ".pdf": "application/pdf",
     ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    # Macro-enabled workbooks (Allianz schedules): read as data only — openpyxl
+    # never executes macros and `keep_vba` is off, so none are retained (C3).
+    ".xlsm": "application/vnd.ms-excel.sheet.macroEnabled.12",
     ".xls": "application/vnd.ms-excel",
 }
 

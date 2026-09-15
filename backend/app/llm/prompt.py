@@ -39,12 +39,11 @@ Extract the requested fields following these STRICT rules:
 
    COMMON CONFUSION — a "Protracted Default" period or claims "waiting
    period" is NOT the maximum extension period. If the document states
-   only a waiting period, leave `max_extension_period` null and mention
-   the waiting period in `additional_info` instead.
+   only a waiting period, leave `max_extension_period` null.
 
-4. DO NOT extract "type of policy" or "debt collection support". They are
-   set by the broker or by insurer rule and are intentionally absent from
-   the schema.
+4. DO NOT extract "type of policy" or "debt collection support" (set by
+   the broker or by insurer rule) or "additional info" (written by the
+   broker). They are intentionally absent from the schema.
 
 5. INSURER IDENTIFICATION. Identify the insurer issuing the document.
    The brokerage's standing list (other names may still appear —
