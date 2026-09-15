@@ -401,7 +401,8 @@ def build_pptx(req: PresentationRequest) -> bytes:
     if declined_line:
         body += [(declined_line, True), ("", False)]
     body += [(p, False) for p in _important_information().split("\n")]
-    _textbox(slide, 90, 156, SLIDE_W - 180, 640, body, size=16, align=PP_ALIGN.CENTER,
+    # …and the long paragraphs start once the corner graphics have ended (253 pt).
+    _textbox(slide, 60, 262, SLIDE_W - 120, 536, body, size=16, align=PP_ALIGN.CENTER,
              line_spacing=1.3)
 
     # ── 4. Terms Comparison ──────────────────────────────────────────────
