@@ -21,9 +21,54 @@ export function setUser(email) {
   state.user = { email, initials };
 }
 
+/* The backend stores a project as a resource (searchable columns + the
+   ordered insurers-approached relation) with the working document under
+   `state`; this SPA works on the flat object, so map at the edge. */
+const STATUSES = ['draft', 'ready', 'sent', 'closed'];
+
+function fromResource(r) {
+  const s = r.state || {};
+  return {
+    ...s,
+    id: r.id,
+    clientName: r.client_name,
+    ref: r.reference,
+    projectType: r.project_type || undefined,
+    policyType: r.policy_type || undefined,
+    approached: (r.insurers_approached || []).map((i) => i.id),
+    status: r.status,
+    generatedAt: r.generated_at ? Date.parse(r.generated_at) : undefined,
+    created: typeof s.created === 'number' ? s.created : Date.parse(r.created_at),
+    updated: s.updated !== undefined ? s.updated : Date.parse(r.updated_at),
+  };
+}
+
+function toWrite(p) {
+  const { id, clientName, ref, projectType, policyType, approached, status, generatedAt, ...rest } = p;
+  return {
+    client_name: clientName || '',
+    reference: ref || '',
+    project_type: projectType || null,
+    policy_type: policyType || null,
+    status: STATUSES.includes(status) ? status : 'draft',
+    insurers_approached: approached || [],
+    generated_at: typeof generatedAt === 'number' ? new Date(generatedAt).toISOString() : null,
+    state: rest,
+  };
+}
+
 export async function loadProjects() {
-  const res = await fetch('/projects');
-  if (res.ok) state.projects = (await res.json()).projects || [];
+  const items = [];
+  let offset = 0;
+  for (;;) {
+    const res = await fetch('/projects?limit=200&offset=' + offset);
+    if (!res.ok) return;
+    const page = await res.json();
+    items.push(...page.items);
+    offset += page.items.length;
+    if (offset >= page.total || page.items.length === 0) break;
+  }
+  state.projects = items.map(fromResource);
 }
 
 /* Session restore on page load: an existing cookie session goes straight
@@ -98,10 +143,10 @@ let offlineNotified = false;
 async function attemptSave(p) {
   setSaveStatus('saving');
   try {
-    const res = await fetch('/projects', {
-      method: 'POST',
+    const res = await fetch('/projects/' + encodeURIComponent(p.id), {
+      method: 'PUT',
       headers: { 'Content-Type': 'application/json', ...csrfHeaders() },
-      body: JSON.stringify({ id: p.id, state: p }),
+      body: JSON.stringify(toWrite(p)),
     });
     if (res.status === 401 || res.status === 403) {
       // Auth/CSRF problem — retrying won't help; the broker must re-sign-in.

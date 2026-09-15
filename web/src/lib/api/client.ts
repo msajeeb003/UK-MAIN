@@ -10,7 +10,7 @@ import { env } from "@/lib/env";
 
 export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
-export type QueryValue = string | number | boolean | null | undefined;
+export type QueryValue = string | number | boolean | string[] | null | undefined;
 
 export interface RequestOptions {
   method?: HttpMethod;
@@ -90,7 +90,11 @@ export function buildUrl(path: string, query?: Record<string, QueryValue>): stri
   if (query) {
     for (const [key, value] of Object.entries(query)) {
       if (value === null || value === undefined) continue;
-      search.set(key, String(value));
+      if (Array.isArray(value)) {
+        for (const v of value) search.append(key, String(v));   // ?status=a&status=b
+      } else {
+        search.set(key, String(value));
+      }
     }
   }
   const qs = search.toString();

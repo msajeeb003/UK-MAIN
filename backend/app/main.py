@@ -37,6 +37,8 @@ from app.core import observability as obs
 from app.core.auth import COOKIE_NAME, delete_expired_sessions, seed_admin_if_empty
 from app.core.config import get_settings
 from app.core.startup import is_production, run_startup_checks
+from app.db.engine import dispose as dispose_db
+from app.db.engine import init_db
 
 obs.configure_logging()          # JSON logs with request id / user id
 run_startup_checks()             # prod refuses to boot on an insecure config
@@ -82,6 +84,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     self-registration), then launch the housekeeping loops — expired-session
     sweep hourly and the retention purge daily — as plain asyncio tasks.
     Shutdown: cancel the loops so a worker exits cleanly."""
+    init_db()                      # relational project store: schema + legacy import
     seed_admin_if_empty()
     tasks = [
         asyncio.create_task(_run_periodically(
@@ -96,6 +99,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         for task in tasks:
             task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
+        dispose_db()
 
 
 app = FastAPI(

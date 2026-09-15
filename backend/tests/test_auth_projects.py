@@ -63,24 +63,24 @@ def test_login_me_logout_roundtrip(client):
 
 
 def test_project_save_list_delete(client):
-    state = {"id": "p-test-1", "clientName": "Aldgate Timber Ltd",
-             "columns": [], "credit": [], "files": []}
-    assert client.post(
-        "/projects", json={"id": "p-test-1", "state": state}
-    ).status_code == 200
+    body = {"client_name": "Aldgate Timber Ltd", "project_type": "renewal",
+            "insurers_approached": ["allianz", "qbe"],
+            "state": {"columns": [], "credit": [], "files": []}}
+    assert client.put("/projects/p-test-1", json=body).status_code == 201
 
-    listed = client.get("/projects").json()["projects"]
+    listed = client.get("/projects").json()["items"]
     mine = next(p for p in listed if p["id"] == "p-test-1")
-    assert mine["clientName"] == "Aldgate Timber Ltd"
+    assert mine["client_name"] == "Aldgate Timber Ltd"
+    assert [i["id"] for i in mine["insurers_approached"]] == ["allianz", "qbe"]
 
     # Reopen = the same reviewed state comes back verbatim (BRD S2).
-    state["clientName"] = "Renamed Ltd"
-    client.post("/projects", json={"id": "p-test-1", "state": state})
-    listed = client.get("/projects").json()["projects"]
-    assert next(p for p in listed if p["id"] == "p-test-1")["clientName"] == "Renamed Ltd"
+    body["client_name"] = "Renamed Ltd"
+    assert client.put("/projects/p-test-1", json=body).status_code == 200
+    assert client.get("/projects/p-test-1").json()["client_name"] == "Renamed Ltd"
 
-    assert client.delete("/projects/p-test-1").status_code == 200
-    listed = client.get("/projects").json()["projects"]
+    assert client.delete("/projects/p-test-1").status_code == 204
+    assert client.get("/projects/p-test-1").status_code == 404
+    listed = client.get("/projects").json()["items"]
     assert not any(p["id"] == "p-test-1" for p in listed)
 
 
@@ -197,16 +197,15 @@ def test_delete_removes_documents_and_exports(client):
     """delete_project clears the project, its documents and its exports."""
     from app.core import db
 
-    db.execute("INSERT INTO projects (id, client_name, updated, state) VALUES (?,?,?,?)",
-               ("del-1", "X", db.now(), "{}"))
+    assert client.put("/projects/del-1", json={"client_name": "X"}).status_code == 201
     db.execute("INSERT INTO documents (id, project_id, kind, filename, stored_path, "
                "page_count, uploaded) VALUES (?,?,?,?,?,?,?)",
                ("doc-1", "del-1", "quote", "q.pdf", "/x", 1, db.now()))
     db.execute("INSERT INTO exports (project_id, format, filename, stored_path, created) "
                "VALUES (?,?,?,?,?)", ("del-1", "pdf", "d.pdf", "/x", db.now()))
 
-    assert client.delete("/projects/del-1").status_code == 200
-    assert db.query_one("SELECT id FROM projects WHERE id=?", ("del-1",)) is None
+    assert client.delete("/projects/del-1").status_code == 204
+    assert client.get("/projects/del-1").status_code == 404
     assert db.query_one("SELECT id FROM documents WHERE project_id=?", ("del-1",)) is None
     assert db.query_one("SELECT format FROM exports WHERE project_id=?", ("del-1",)) is None
 

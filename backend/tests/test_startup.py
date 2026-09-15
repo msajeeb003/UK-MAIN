@@ -72,7 +72,11 @@ def test_prod_boots_when_configured(monkeypatch):
     monkeypatch.setattr(s, "anthropic_api_key", SecretStr("sk-ant-test"))
     monkeypatch.setattr(s, "llm_no_training_ack", True)   # DPA filed
     monkeypatch.setattr(s, "supabase_url", "https://unit.supabase.co")
+    monkeypatch.setattr(s, "database_url", "postgresql://u:p@db.example/quotes")
     startup.run_startup_checks()          # no raise
+    monkeypatch.setattr(s, "database_url", "")
+    with pytest.raises(RuntimeError, match="DATABASE_URL must point at PostgreSQL"):
+        startup.run_startup_checks()      # the SQLite fallback is dev-only
 
 
 def test_dev_is_lenient(monkeypatch):
@@ -112,6 +116,7 @@ def test_prod_refuses_plain_http_supabase_url(monkeypatch):
     monkeypatch.setattr(s, "anthropic_api_key", SecretStr("sk-ant-test"))
     monkeypatch.setattr(s, "llm_no_training_ack", True)
     monkeypatch.setattr(s, "admin_password", SecretStr("Zurich-Atradius-2026!"))
+    monkeypatch.setattr(s, "database_url", "postgresql://u:p@db.example/quotes")
     monkeypatch.setattr(s, "supabase_url", "http://supabase.internal")
     with pytest.raises(RuntimeError, match="SUPABASE_URL must use https"):
         startup.run_startup_checks()
@@ -155,3 +160,19 @@ def test_lifespan_seeds_admin_and_stops_cleanly(monkeypatch):
     with TestClient(main.app):
         assert seeded == [True]
         assert swept.wait(5)            # first sweep runs right after start-up
+
+
+def test_database_url_is_validated_and_normalised(monkeypatch):
+    from pydantic import ValidationError
+
+    from app.core.config import Settings
+
+    monkeypatch.setenv("DATABASE_URL", "postgresql://u:p@host:6543/postgres")
+    assert Settings().database_url_effective == "postgresql+psycopg://u:p@host:6543/postgres"
+    monkeypatch.setenv("DATABASE_URL", "postgres://u:p@host/db")     # Heroku-style alias
+    assert Settings().database_url_effective.startswith("postgresql+psycopg://")
+    monkeypatch.setenv("DATABASE_URL", "")
+    assert Settings().database_url_effective.endswith("/projects.db")
+    monkeypatch.setenv("DATABASE_URL", "mysql://u:p@host/db")
+    with pytest.raises(ValidationError):
+        Settings()

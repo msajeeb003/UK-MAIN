@@ -71,13 +71,58 @@ export interface ProjectState {
   [key: string]: unknown;
 }
 
-export interface ProjectsResponse {
-  projects: ProjectState[];
+export type ProjectStatus = "draft" | "ready" | "sent" | "closed";
+
+/** One approached insurer as the API returns it (name resolved server-side). */
+export interface InsurerRef {
+  id: string;
+  name: string;
+  position: number;
 }
 
-export interface SaveProjectRequest {
+/** The project resource of the relational store (GET /projects/{id}). */
+export interface ProjectResource {
   id: string;
-  state: ProjectState;
+  client_name: string;
+  reference: string;
+  project_type: "new" | "renewal" | null;
+  policy_type: string | null;
+  status: ProjectStatus;
+  insurers_approached: InsurerRef[];
+  owner_email: string;
+  updated_by: string;
+  created_at: string;
+  updated_at: string;
+  generated_at: string | null;
+  /** The working document (everything in ProjectState that is not a column). */
+  state: Record<string, unknown>;
+}
+
+/** Body of PUT /projects/{id} (full replace) and POST /projects. */
+export interface ProjectWrite {
+  client_name: string;
+  reference: string;
+  project_type: "new" | "renewal" | null;
+  policy_type: string | null;
+  status: ProjectStatus;
+  insurers_approached: string[];
+  generated_at: string | null;
+  state: Record<string, unknown>;
+}
+
+export interface ProjectPage {
+  items: ProjectResource[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface ProjectSearch {
+  q?: string;
+  status?: ProjectStatus[];
+  projectType?: "new" | "renewal";
+  insurer?: string;
+  sort?: "updated_desc" | "updated_asc" | "client_asc" | "client_desc" | "created_desc" | "created_asc";
 }
 
 export interface OkResponse {

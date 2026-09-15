@@ -1,17 +1,21 @@
 """Data retention purge + right-to-erasure (BRD 2.11)."""
 
 import time
+from datetime import UTC, datetime
 
 from app import retention
 from app.api.projects import delete_project_data
 from app.core import db
 from app.core.config import get_settings
+from app.db.engine import session_scope
+from app.services import projects as repo
 
 
 def _seed_project(pid: str, updated: float) -> None:
     """A project row + a document row + a metrics row + a file on disk."""
-    db.execute("INSERT INTO projects (id, client_name, updated, state) VALUES (?,?,?,?)",
-               (pid, "Acme Ltd", updated, "{}"))
+    with session_scope() as session:
+        project = repo.create(session, {"client_name": "Acme Ltd"}, "tester", project_id=pid)
+        project.updated_at = datetime.fromtimestamp(updated, tz=UTC)
     db.execute("INSERT INTO documents (id, project_id, kind, filename, stored_path, "
                "page_count, uploaded) VALUES (?,?,?,?,?,?,?)",
                (pid + "-d", pid, "quote", "q.pdf", "/x", 1, updated))
@@ -23,9 +27,14 @@ def _seed_project(pid: str, updated: float) -> None:
     (folder / "q.pdf").write_bytes(b"%PDF-1.4 doc")
 
 
+def _in_store(pid: str) -> bool:
+    with session_scope() as session:
+        return repo.get(session, pid) is not None
+
+
 def _exists(pid: str) -> dict:
     return {
-        "project": db.query_one("SELECT 1 AS x FROM projects WHERE id=?", (pid,)) is not None,
+        "project": _in_store(pid),
         "document": db.query_one("SELECT 1 AS x FROM documents WHERE project_id=?", (pid,)) is not None,
         "metric": db.query_one("SELECT 1 AS x FROM metrics WHERE project_id=?", (pid,)) is not None,
         "folder": (get_settings().data_path / "projects" / pid).exists(),

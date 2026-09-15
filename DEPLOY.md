@@ -81,8 +81,11 @@ ADMIN_PASSWORD=<strong password>
 # Behind HTTPS:
 COOKIE_SECURE=true
 
-# Storage (SQLite DB + retained documents + exports)
+# Storage (app SQLite DB + retained documents + exports)
 DATA_DIR=/opt/quote-tool/data
+# Project store — PostgreSQL, required in production (docs/DATABASE.md).
+# Paste the Supabase "Connect → URI" string.
+DATABASE_URL=postgresql://postgres.<ref>:<password>@<host>:6543/postgres
 ```
 
 Add further users (no self-registration, BRD 2.10):

@@ -120,9 +120,9 @@ def test_bearer_write_needs_no_csrf_token(client, monkeypatch):
     not apply to bearer requests (which cannot be forged cross-site)."""
     _configure(monkeypatch)
     del client.headers["X-CSRF-Token"]
-    res = client.post("/projects", json={"id": "sb-proj-1", "state": {"clientName": "Acme"}},
-                      headers=_bearer(_token()))
-    assert res.status_code == 200
+    res = client.put("/projects/sb-proj-1", json={"client_name": "Acme"},
+                     headers=_bearer(_token()))
+    assert res.status_code in (200, 201)
     # The audit trail records the Supabase identity as the actor.
     entries = client.get("/audit", headers=_bearer(_token())).json()["entries"]
     assert any(e["actor"] == "broker@ukcib.co.uk" and e["target"] == "sb-proj-1"
@@ -133,8 +133,8 @@ def test_bad_bearer_never_falls_back_to_cookie(client, monkeypatch):
     """A cookie session plus an invalid Bearer header must be rejected, or a
     forged header could ride on the cookie while skipping the CSRF check."""
     _configure(monkeypatch)
-    res = client.post("/projects", json={"id": "sb-proj-2", "state": {}},
-                      headers=_bearer(_token(key="wrong")))
+    res = client.put("/projects/sb-proj-2", json={"client_name": "Acme"},
+                     headers=_bearer(_token(key="wrong")))
     assert res.status_code == 401
     res = client.get("/auth/me", headers=_bearer("garbage"))
     assert res.status_code == 401

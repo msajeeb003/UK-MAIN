@@ -57,6 +57,10 @@ class Settings(BaseSettings):
     scanned_page_ratio: float = 0.4
 
     # ── Storage + authentication (BRD 2.9/2.10) ──────────────────────────
+    # Relational project store (docs/DATABASE.md): a PostgreSQL URL in
+    # production (Supabase's connection string works as-is); empty = a local
+    # SQLite file under DATA_DIR for development and tests.
+    database_url: str = ""
     # SQLite database + uploaded documents + generated exports live here.
     # Default: <repo>/data. Point DATA_DIR elsewhere (e.g. a mounted,
     # encrypted volume) in production.
@@ -162,6 +166,29 @@ class Settings(BaseSettings):
         if not value:
             raise ValueError("SUPABASE_JWT_AUDIENCE cannot be blank")
         return value
+
+    @field_validator("database_url")
+    @classmethod
+    def _database_url_scheme(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            return ""
+        scheme = value.split("://", 1)[0].lower()
+        if scheme in ("postgres", "postgresql", "postgresql+psycopg", "sqlite"):
+            return value
+        raise ValueError("DATABASE_URL must be a postgresql:// (or sqlite:///) URL")
+
+    @property
+    def database_url_effective(self) -> str:
+        """The SQLAlchemy URL actually used: PostgreSQL via psycopg when
+        DATABASE_URL is set, else `<DATA_DIR>/projects.db` on SQLite."""
+        url = self.database_url
+        if not url:
+            return "sqlite:///" + (self.data_path / "projects.db").as_posix()
+        scheme, rest = url.split("://", 1)
+        if scheme.lower() in ("postgres", "postgresql"):
+            return "postgresql+psycopg://" + rest
+        return url
 
     @property
     def supabase_auth_enabled(self) -> bool:

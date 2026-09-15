@@ -20,10 +20,9 @@ def test_login_is_audited(client):
 
 
 def test_project_save_and_delete_are_audited(client):
-    state = {"id": "aud-1", "clientName": "Aldgate Timber Ltd",
-             "confirmed": {"premium": True, "indemnity": False},
+    state = {"confirmed": {"premium": True, "indemnity": False},
              "recommended": "col-a", "columns": [], "credit": [], "files": []}
-    client.post("/projects", json={"id": "aud-1", "state": state})
+    client.put("/projects/aud-1", json={"client_name": "Aldgate Timber Ltd", "state": state})
     created = _latest("project.create")
     assert created["target"] == "aud-1" and created["actor"] == TEST_USER[0]
     assert "Aldgate Timber" in created["detail"] and "premium" in created["detail"]
@@ -32,7 +31,7 @@ def test_project_save_and_delete_are_audited(client):
     deleted = _latest("project.delete")
     assert deleted["target"] == "aud-1" and deleted["actor"] == TEST_USER[0]
     # the delete audit entry OUTLIVES the project it recorded
-    assert db.query_one("SELECT 1 AS x FROM projects WHERE id='aud-1'") is None
+    assert client.get("/projects/aud-1").status_code == 404
 
 
 def test_upload_and_export_are_audited(client, monkeypatch, sample_extraction, digital_pdf):

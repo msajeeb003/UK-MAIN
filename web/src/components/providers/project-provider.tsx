@@ -2,7 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
-import { errorMessage, projectsApi, type ProjectState } from "@/lib/api";
+import { ApiError, errorMessage, projectsApi, type ProjectState } from "@/lib/api";
 
 export type ProjectLoadStatus = "loading" | "ready" | "missing" | "error";
 
@@ -40,16 +40,21 @@ export function ProjectProvider({ projectId, children }: { projectId: string; ch
 
   useEffect(() => {
     let cancelled = false;
-    projectsApi.list().then(
-      (list) => {
+    projectsApi.get(projectId).then(
+      (found) => {
         if (cancelled) return;
-        const found = list.find((p) => p.id === projectId) ?? null;
         latest.current = found;
         setProject(found);
-        setStatus(found ? "ready" : "missing");
+        setStatus("ready");
       },
       (err: unknown) => {
         if (cancelled) return;
+        if (err instanceof ApiError && err.status === 404) {
+          latest.current = null;
+          setProject(null);
+          setStatus("missing");
+          return;
+        }
         setError(errorMessage(err, "Could not load the project"));
         setStatus("error");
       },

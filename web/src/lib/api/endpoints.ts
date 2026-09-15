@@ -16,8 +16,12 @@ import type {
   OkResponse,
   PresentationRequest,
   PresentationStats,
-  ProjectsResponse,
+  ProjectPage,
+  ProjectResource,
+  ProjectSearch,
   ProjectState,
+  ProjectStatus,
+  ProjectWrite,
   SessionUser,
 } from "./types";
 
@@ -39,13 +43,86 @@ export const insurersApi = {
 };
 
 // ── /projects ───────────────────────────────────────────────────────────
-export const projectsApi = {
-  list: () => http.get<ProjectsResponse>("/projects").then((r) => r.projects),
+// The backend keeps a project as a relational resource (searchable columns
+// + the ordered insurers-approached relation) with the broker's working
+// document under `state`. The screens keep working on the flat
+// ProjectState, so the mapping lives here and nowhere else.
+const STATUSES: readonly ProjectStatus[] = ["draft", "ready", "sent", "closed"];
+const PAGE_SIZE = 200;
 
-  save: (state: ProjectState) => http.post<OkResponse>("/projects", { id: state.id, state }),
+/** ProjectState keys that are columns / the relation on the server, not part of `state`. */
+const COLUMN_KEYS = ["id", "clientName", "ref", "projectType", "policyType", "approached", "status", "generatedAt"] as const;
+
+function toWrite(state: ProjectState): ProjectWrite {
+  const { clientName, ref, projectType, policyType, approached, status, generatedAt } = state;
+  const rest: Record<string, unknown> = { ...state };
+  for (const key of COLUMN_KEYS) delete rest[key];
+  return {
+    client_name: clientName ?? "",
+    reference: ref ?? "",
+    project_type: projectType ?? null,
+    policy_type: policyType ?? null,
+    status: STATUSES.includes(status as ProjectStatus) ? (status as ProjectStatus) : "draft",
+    insurers_approached: approached ?? [],
+    generated_at: typeof generatedAt === "number" ? new Date(generatedAt).toISOString() : null,
+    state: rest,
+  };
+}
+
+export function fromResource(r: ProjectResource): ProjectState {
+  const state = r.state as Partial<ProjectState>;
+  return {
+    ...state,
+    id: r.id,
+    clientName: r.client_name,
+    ref: r.reference,
+    projectType: r.project_type ?? undefined,
+    policyType: r.policy_type ?? undefined,
+    approached: r.insurers_approached.map((i) => i.id),
+    status: r.status,
+    generatedAt: r.generated_at ? Date.parse(r.generated_at) : undefined,
+    created: typeof state.created === "number" ? state.created : Date.parse(r.created_at),
+    updated: state.updated ?? Date.parse(r.updated_at),
+  };
+}
+
+function searchQuery(search: ProjectSearch, limit: number, offset: number): Record<string, string | string[] | number> {
+  const query: Record<string, string | string[] | number> = { limit, offset };
+  if (search.q) query.q = search.q;
+  if (search.status?.length) query.status = search.status;
+  if (search.projectType) query.project_type = search.projectType;
+  if (search.insurer) query.insurer = search.insurer;
+  if (search.sort) query.sort = search.sort;
+  return query;
+}
+
+export const projectsApi = {
+  /** Every project (BRD 2.10: all named users see all projects), newest first. */
+  async list(search: ProjectSearch = {}): Promise<ProjectState[]> {
+    const items: ProjectResource[] = [];
+    let offset = 0;
+    for (;;) {
+      const page = await http.get<ProjectPage>("/projects", { query: searchQuery(search, PAGE_SIZE, offset) });
+      items.push(...page.items);
+      offset += page.items.length;
+      if (offset >= page.total || page.items.length === 0) break;
+    }
+    return items.map(fromResource);
+  },
+
+  /** One page of a search — for a server-side paged list. */
+  search: (search: ProjectSearch, limit = 50, offset = 0) =>
+    http.get<ProjectPage>("/projects", { query: searchQuery(search, limit, offset) }),
+
+  get: (projectId: string) =>
+    http.get<ProjectResource>(`/projects/${encodeURIComponent(projectId)}`).then(fromResource),
+
+  /** Create-or-replace at the state's id (PUT). Returns the stored state. */
+  save: (state: ProjectState) =>
+    http.put<ProjectResource>(`/projects/${encodeURIComponent(state.id)}`, toWrite(state)).then(fromResource),
 
   remove: (projectId: string) =>
-    http.delete<OkResponse>(`/projects/${encodeURIComponent(projectId)}`),
+    http.delete<void>(`/projects/${encodeURIComponent(projectId)}`),
 
   /** URL of the latest generated export of a format (needs the Bearer token). */
   exportUrl: (projectId: string, format: ExportFormat) =>

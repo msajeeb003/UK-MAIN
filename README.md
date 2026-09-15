@@ -27,6 +27,8 @@ client presentation.
 │   ├── app/
 │   │   ├── main.py             App entrypoint: wiring, middleware, frontend mount
 │   │   ├── api/routes.py       HTTP endpoints (/extract-quote, /generate-presentation, …)
+│   │   ├── api/projects.py     project CRUD + search (docs/DATABASE.md)
+│   │   ├── db/                 SQLAlchemy models + engine (PostgreSQL; SQLite fallback)
 │   │   ├── core/               config.py (settings) · errors.py (client-safe → HTTP)
 │   │   ├── models/             schemas.py (strict LLM schema) · presentation.py
 │   │   ├── services/           pipeline.py · verification.py · presentation.py · library.py
@@ -132,6 +134,22 @@ SQLite so a poll can hit any gunicorn worker; at most three extractions run
 at once per process and finished jobs are readable for 24 hours. The Next.js
 upload screen (S4) uses this to show live per-file status and to resume
 polling after a reload.
+
+### Projects (PostgreSQL)
+
+Projects are a relational resource (docs/DATABASE.md): searchable columns,
+the ordered **insurers approached** relation, and the broker's working
+document under `state`. `DATABASE_URL` points at PostgreSQL in production
+(Supabase's connection string works as-is); empty falls back to a SQLite
+file under `DATA_DIR` for development and tests.
+
+| Method | Path | |
+|---|---|---|
+| `GET` | `/projects?q=&status=&project_type=&insurer=&sort=&limit=&offset=` | search / list → `{items, total, limit, offset}` |
+| `POST` | `/projects` | create (201; `id` optional, 409 on clash) |
+| `GET` `PUT` `PATCH` `DELETE` | `/projects/{id}` | detail · replace-or-create · partial update · erase (204) |
+| `GET` `PUT` | `/projects/{id}/insurers` | the approached list · replace it in order |
+| `POST` `DELETE` | `/projects/{id}/insurers/{insurer_id}` | add one · remove one |
 
 ## Extraction rules
 

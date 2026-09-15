@@ -11,10 +11,12 @@ CLI:  python -m app.retention run     # purge now
 import logging
 import sys
 import time
+from datetime import UTC, datetime
 
 from app.api.projects import delete_project_data
-from app.core import db
 from app.core.config import get_settings
+from app.db.engine import session_scope
+from app.services import projects as repo
 
 logger = logging.getLogger("app.retention")
 
@@ -25,11 +27,9 @@ def expired_project_ids() -> list[str]:
     days = get_settings().retention_days
     if days <= 0:
         return []
-    cutoff = time.time() - days * 86400
-    rows = db.query(
-        "SELECT id FROM projects WHERE updated < ? ORDER BY updated", (cutoff,)
-    )
-    return [r["id"] for r in rows]
+    cutoff = datetime.fromtimestamp(time.time() - days * 86400, tz=UTC)
+    with session_scope() as session:
+        return repo.expired_ids(session, cutoff)
 
 
 def purge_expired() -> list[str]:
