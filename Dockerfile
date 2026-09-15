@@ -37,6 +37,10 @@ COPY backend backend
 COPY frontend frontend
 COPY entrypoint.sh entrypoint.sh
 
+# The presentation template's fonts (Poppins, Antonio — OFL) so LibreOffice
+# renders the PDF with the same type as the PowerPoint.
+RUN mkdir -p /usr/share/fonts/truetype/quote-tool \n    && cp backend/app/assets/fonts/*.ttf /usr/share/fonts/truetype/quote-tool/ \n    && fc-cache -f >/dev/null
+
 # Make the `app` package importable for gunicorn AND `python -m app.backup`.
 ENV PYTHONPATH=/srv/backend \
     PYTHONDONTWRITEBYTECODE=1 \

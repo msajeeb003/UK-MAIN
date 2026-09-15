@@ -27,7 +27,12 @@
   ],
   "demands": "As part of our discussions, we have identified that a credit insurance policy will help protect the business against potential bad debts, and will aid in any future growth plans.\n\nIn accordance with the Financial Conduct Authority (FCA) regulations, we are required to ensure that the policy we are recommending is suitable for your needs.",
   "recommendation": "The policy we propose to arrange is provided by {name}, which is one of the UK's leading Credit Insurance companies. An explanation of the proposed policy is included in the policy documents. We are not contractually obliged to purchase insurance products from {name}. Our past experience, and analysis of the market, has shown that the cover provided by {name} is comprehensive and its premiums competitive.",
+  "reasons_intro": "In addition to this, the following points were important with our recommendation:",
   "our_status": "We are included on a register maintained by the FCA which allows us to carry out insurance distribution activity, such as advising, selling and administration of insurance contracts. This part of our business, including arrangements for complaints or redress if something goes wrong, is regulated by the relevant representative body. The FCA's register can be accessed via their website at www.fca.org.uk/register",
   "contact": "Our phone line is always open and we love to talk!\nDon't forget, we work for you so contact us at any time to discuss your policy, your clients or your financial needs.",
-  "contact_lines": ["0845 3222 525", "www.ukcreditinsurance.com", "hello@ukcreditinsurance.com"]
+  "contact_lines": [
+    "0845 3222 525",
+    "www.ukcreditinsurance.com",
+    "hello@ukcreditinsurance.com"
+  ]
 }

@@ -204,7 +204,7 @@ def wording_rules() -> dict:
 # ── Presentation wording ───────────────────────────────────────────────────
 
 _WORDING_KEYS = ("brand", "about", "feedback_intro", "fair_presentation", "terms_notes",
-                 "important_information", "demands", "recommendation", "our_status",
+                 "important_information", "demands", "recommendation", "reasons_intro", "our_status",
                  "contact", "contact_lines")
 
 
