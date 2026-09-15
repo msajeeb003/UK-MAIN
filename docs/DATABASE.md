@@ -87,6 +87,32 @@ same `document_id`. Erasing a project deletes its objects and records. The
 single-file `/extract-quote` and `/extract-jobs` paths still work and now
 create the same records (already `complete`).
 
+## Comparison grid (`app/services/grid.py`, `app/api/grid.py`)
+
+The 16-row grid (BRD 2.3) is not a separate table: its columns and cells
+are the `state.columns` / `state.confirmed` the review screen already
+stores, so server-side edits and the screen's autosave describe one
+document. Rows: `insurer` (header), `type` and `debt` (set fields, BRD
+2.4 — project default / insurer rule, overridable per column), thirteen
+extracted rows (the AI's original kept as `orig`), plus the broker-entered
+`waiting_period` the screen carries (`extra: true`, not in the BRD list).
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/projects/{id}/grid` | Row definitions, every column's cells (`value`, `orig`, `page`, `confidence`, `provenance` header/set/extracted/edited/manual/blank, `source` override/project/insurer_rule), confirmations, gate, review tick. |
+| `GET` | `/projects/{id}/grid/fields` | The row definitions alone. |
+| `PATCH` | `/projects/{id}/grid/columns/{col}/cells/{field}` `{value}` | One edit. Keeps `orig`, marks the cell human-verified, clears the row's confirmation if gated and the review tick. `insurer` renames the column; `type`/`debt` become overrides. |
+| `DELETE` | `/projects/{id}/grid/columns/{col}/cells/{field}` | Revert to the AI's original (409 when there is none). |
+| `PUT` / `DELETE` | `/projects/{id}/grid/columns/{col}/set-fields/{field}` `{value}` | Per-column override of `type` (one of the four policy types) or `debt` (Included / Outsourced); empty or DELETE clears it. |
+| `GET` | `/projects/{id}/grid/confirmations` | The four gated flags (`confirmed`, `by`, `at`) and the gate (`complete`, `missing`). |
+| `PUT` | `/projects/{id}/grid/confirmations/{field}` `{confirmed}` | Confirm / unconfirm one gated field: annual premium, indemnity, excess, max liability (422 otherwise). |
+| `PUT` | `/projects/{id}/grid/confirmations` `{confirmed: {field: bool}}` | Bulk form, all-or-nothing. |
+
+Every write returns the full grid (or the confirmations block) and is
+audited by field/column, never by value. The web app still autosaves the
+whole `state`; a stale save can overwrite a server-side edit made in
+between — no optimistic-concurrency check exists yet.
+
 ## Migration from the blob table
 
 Before this store existed, projects were one JSON blob per row in the SQLite
